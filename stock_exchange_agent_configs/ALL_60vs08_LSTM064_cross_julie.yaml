@@ -1,0 +1,97 @@
+# Configuration file for LSTM training program
+
+# Dataset settings
+dataset:
+  market: "ashare"                # Market type (ashare, nasdaq, etc.)
+  exchange_cd: ""               # Exchange code (e.g., XSHG for Shanghai Stock Exchange)
+  stock_root_dir: "/dir/to/my/data/ashare_daily_stock_order_by_dates"  # Path to input datase
+  stock_tickers: []                 # List of stock tickers
+  stock_tickers_to_exclude: ['9']     # List of stock tickers to exclude
+  index_root_dir: "/dir/to/my/data/ashare_daily_index_order_by_dates"  # Path to index dataset
+  index_tickers: ['000001', '000300', '399001', '399300'] #['000016', '000300', '000905', '000010'] 
+                #['399001', '399006', '399330', '399005', '399300']  # List of index tickers
+  sequence_length: 60                # Length of input sequences
+  target_length: 8               # Length of prediction horizon
+  n_classes: 7                     # Number of classes for classification
+  # we should split test set into testing and final_testing
+  # Testing set is for best performance models (ensemble models) pickup
+  # Models may overfit on testing set. So, we should keep a separate final testing set.
+  # final testing set is for the final generalization evaluation
+  testing:
+    start_date: "2024-01-01"         # Start date for testing data
+    end_date: "2099-12-31"           # End date for testing data
+  final_testing:
+    start_date: "2025-04-01"         # Start date for final testing data
+    end_date: "2099-12-31"           # End date for final testing data
+
+# Model architecture
+model:
+  type: "LSTM"                       # Model type
+  autoregressive: false              # Whether to use autoregressive generation
+  num_layers: 2                      # Number of LSTM layers
+  hidden_size: 64                   # Number of units in each LSTM layer
+  dropout: 0.5                       # Dropout rate for regularization
+  input_size: 25                    # Number of input features
+  output_size: 7                     # Number of output units (e.g., for regression)
+
+inference:
+  voting: false                    # Whether to use voting for predictions
+  batch_size: 2688           # Batch size for inference
+  top_percentage: 0.1                # Top percentage for selecting checkpoints from golden model search
+  num_future_days: 0
+  max_ensemble_size: 50
+
+# Model pool configurations for golden model search and ensemble
+model_pool:
+  min_checkpoint_idx: 3              # Minimum checkpoint index to consider
+  min_validation_bonus_of_checkpoints: 0.0 # Minimum validation bonus of checkpoints
+  n_models_in_each_checkpoint_dir: 160         # Number of models in each checkpoint directory
+  sort_metric: 'harmonic_mean'                 # Metric to sort checkpoints (sum, sum_with_penalty, sum_with_balance_1, multiply, harmonic_mean)
+  max_number_of_processes: 20  # Maximum number of processes for running of model pool
+  checkpoint_dirs: [
+    'train_daily_data/checkpoints/ALL_60vs08_064/from_2014/01',
+    'train_daily_data/checkpoints/ALL_60vs08_064/from_2014/02',
+    'train_daily_data/checkpoints/ALL_60vs08_064/from_2014/03',
+    'train_daily_data/checkpoints/ALL_60vs08_064/from_2014/04',
+    'train_daily_data/checkpoints/ALL_60vs08_064/from_2014/05',
+  ]  # List of directories containing model checkpoints
+
+ensemble_search:
+    daily_return_50day_decay: 0.5     # How much decay for the daily return 50 trade days ago (between 0.0 and 1.0)
+    volatility_rate: 0.0          # how much volatility you should consider. It is between 0.0 and 1.0
+    drawdown_rate: 0.01            # how much drawdown you should consider. It is between 0.0 and 1.0
+    min_weekly_win_rate: 0.5      # min win rate you should consider.
+    min_monthly_win_rate: 0.5     # min win rate you should consider.
+    min_weekly_IR_median: 0.0     # min weekly IR median you should consider.
+    min_monthly_IR_median: 0.0     # min monthly IR median you should consider.
+
+# Data preprocessing
+preprocessing:
+  differenced: true                 # Whether to use differencing
+  normalize: true                    # Normalize input features
+  normalize_method: "standard"                   # Normalization method (minmax, zeromax, standard)
+  ignore_turnover_data: false          # Whether to ignore turnover data
+
+# Device settings
+device:
+  type: "cuda"                       # Device to use (cuda, cpu)
+  gpu_plan:                          # GPU plan for model cluster inference, format: a dictionary of id-weight pairs
+    0: 10
+    1: 10
+    2: 0
+    3: 0
+
+# Logging and monitoring
+logging:
+  logging_level: "info"                # Logging level (debug, info, warning, error, critical)
+  log_dir: "stock_exchange_agent_logs/ALL_60vs08_064/"  # Path to save log file
+
+stock_exchange_agent:
+  n_tickers_to_select_each_time: 40  # Number of tickers to select each time
+  personal_reservoir_initial_amount: 32000000      # Size of personal reservoir
+  human_defect_level:  0.5 #0.75       # Level of human defect (0.0-1.0), 
+                                    # level 0 means you always buy in lowest price and sell in highest price
+                                    # level 10 means you always buy in highest price and sell in lowest price
+  exchange_near_close_time: true     # Whether to use random price around close price
+  buying_first: true                # Whether to buy first
+  selling_first: true               # Whether to sell first

@@ -1,0 +1,75 @@
+# Configuration file for LSTM training program
+
+# Dataset settings
+dataset:
+  market: "ashare"                # Market type (ashare, nasdaq, etc.)
+  exchange_cd: ""               # Exchange code (e.g., XSHG for Shanghai Stock Exchange)
+  stock_root_dir: "/dir/to/my/data/ashare_daily_stock_order_by_dates"  # Path to input datase
+  stock_tickers: []                 # List of stock tickers
+  stock_tickers_to_exclude: ['9']     # List of stock tickers to exclude
+  index_root_dir: "/dir/to/my/data/ashare_daily_index_order_by_dates"  # Path to index dataset
+  index_tickers: ['000001', '000300', '399001', '399300'] #['000016', '000300', '000905', '000010'] 
+                #['399001', '399006', '399330', '399005', '399300']  # List of index tickers
+  sequence_length: 60                # Length of input sequences
+  target_length: 8               # Length of prediction horizon
+  n_classes: 7                     # Number of classes for classification
+  training:
+    date_ranges: [["2014-09-01", "2015-08-31"], ["2017-01-01", "2020-08-31"], ["2022-01-01", "2024-12-31"]]  # List of date ranges for training data
+  validation_1:
+    date_ranges: [["2015-09-01", "2016-12-31"]]  # List of date ranges for first validation data
+  validation_2:
+    date_ranges: [["2020-09-01", "2021-12-31"]]  # List of date ranges for second validation data
+
+# Model architecture
+model:
+  type: "LSTM"                       # Model type
+  autoregressive: false              # Whether to use autoregressive generation
+  num_layers: 2                      # Number of LSTM layers
+  hidden_size: 64                   # Number of units in each LSTM layer
+  dropout: 0.5                       # Dropout rate for regularization
+  input_size: 25                    # Number of input features
+  output_size: 7                     # Number of output units (e.g., for regression)
+
+# Training hyperparameters
+training:
+  epochs: 12                         # Number of training epochs
+  min_learning_rate: 0.00001                # Minimum learning rate
+  max_learning_rate: 0.00004                # Maximum learning rate
+  batch_size: 4096                   # Batch size for training
+  dataloader_workers: 0             # Number of workers for data loading
+  warmup_epochs: 10                  # Number of warmup epochs for learning
+  step_size: 1                   # Number of steps before learning rate decay
+  gamma: 0.9                        # Factor by which the learning rate is reduced
+  weight_decay: 0.0001               # L2 regularization term
+  random_learning_rate: false          # Whether to use random learning rate
+
+validation:
+  batch_size: 4096                    # Batch size for testing
+  dataloader_workers: 0              # Number of workers for data loading
+
+# Data preprocessing
+preprocessing:
+  differenced: true                 # Whether to use differencing
+  normalize: true                    # Normalize input features
+  normalize_method: "standard"                   # Normalization method (minmax, zeromax, standard)
+  min_daily_turnover_value: 0.0  # Minimum daily turnover value to consider a stock
+  strong_decrease_ignore_threshold: -1000.0  # Threshold for strong decrease to ignore
+  strong_increase_ignore_threshold: 1000.0  # Threshold for strong increase to ignore
+  strong_fluctuation_ignore_threshold: 1000.0  # Threshold for strong fluctuation to ignore
+  ignore_turnover_data: false          # Whether to ignore turnover data
+
+# Output settings
+output:
+  model_checkpoint_dir: "train_daily_data/checkpoints/ALL_60vs08_064/from_2015/02/"  # Path to save trained model
+  save_frequency: 1                        # Save model every N epochs
+
+# Device settings
+device:
+  type: "cuda"                       # Device to use (cuda, cpu)
+  gpu_id: 0                          # GPU ID if multiple GPUs are available
+
+# Logging and monitoring
+logging:
+  logging_level: "info"                # Logging level (debug, info, warning, error, critical)
+  log_dir: "train_daily_data/logs/ALL_60vs08_064/from_2015/02/"  # Path to save log file
+

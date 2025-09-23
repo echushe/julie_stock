@@ -178,8 +178,14 @@ def most_distinct_candidates(equity_of_log_format_2d, num_to_select):
     # Make sure the input data is a pure numpy array
     equity_of_log_format_2d = np.array(equity_of_log_format_2d, dtype=float)
 
-    # Get weekly returns (get difference between each 5 days)
-    weekly_returns_2d = equity_of_log_format_2d[:, 5:] - equity_of_log_format_2d[:, :-5]
+    # diff on the second axis
+    daily_returns_2d = np.diff(equity_of_log_format_2d, axis=1)
+    # Make sure the number of days is multiple of 5
+    num_days = daily_returns_2d.shape[1]
+    num_days -= num_days % 5
+    daily_returns_2d = daily_returns_2d[:, -num_days :]
+    # Reshape from (N, T) to (N, T // 5, 5) and then sum along the last axis
+    weekly_returns_2d = daily_returns_2d.reshape(daily_returns_2d.shape[0], -1, 5).sum(axis=-1)
 
     # calculate covariance of weekly returns
     covariance_matrix = np.cov(weekly_returns_2d)

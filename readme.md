@@ -40,7 +40,7 @@ However, the other type of validation sets are used to select an "optimal" ensem
 - Validation of models to build an "optimal" ensemble
 
 In each round of rolling forward validation-test, performance of each model in the validation period is evaluated by metrics like daily returns, draw-downs, weekly IR, monthly IR, etc.
-L top performance models are chosen from the model pool, and then l models of least covariance between each other are further selected from these L models as an ensemble.
+K top performance models are chosen from the model pool of 5N models, and then k (k <= K < 5N) models of least covariance between each other are further selected from these K models as an ensemble.
 This ensemble is then tested by the "future" data defined by `num_future_days`.
 Validation data and future data are not allowed to have intersections to avoid leaking of 'future information'.
 In addition, all rolling forward data is isolated from training-validation data by at least 3 months (or even longer).

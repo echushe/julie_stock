@@ -58,15 +58,20 @@ def evaluate(equity_of_log_format, decay_50day):
     drawdowns = equity_of_log_format - rolling_max
     # Calculate weighted mean drawdown
     weighted_drawdowns = drawdowns[1:] * weights
-    mean_drawdown = np.mean(weighted_drawdowns)
+    mean_drawdown = np.sum(weighted_drawdowns)
 
+    num_weeks = len(returns) // 5
+    num_months = len(returns) // 22
+    returns_grouped_by_week = returns[-num_weeks*5:].reshape(num_weeks, 5)
+    returns_grouped_by_month = returns[-num_months*22:].reshape(num_months, 22)
+    
     # Calculate weekly and monthly returns
-    weekly_returns = np.array([np.sum(weighted_returns[i:i+5]) for i in range(0, len(weighted_returns)-4, 5)])
-    monthly_returns = np.array([np.sum(weighted_returns[i:i+22]) for i in range(0, len(weighted_returns)-21, 22)])
+    weekly_returns = returns_grouped_by_week.sum(axis=1)
+    monthly_returns = returns_grouped_by_month.sum(axis=1)
 
     # Calculate std of daily returns of each week or each month
-    weekly_std = np.array([np.std(weighted_returns[i:i+5]) for i in range(0, len(weighted_returns)-4, 5)])
-    monthly_std = np.array([np.std(weighted_returns[i:i+22]) for i in range(0, len(weighted_returns)-21, 22)])
+    weekly_std = np.std(returns_grouped_by_week, axis=1)
+    monthly_std = np.std(returns_grouped_by_month, axis=1)
 
     assert len(weekly_returns) == len(weekly_std)
     assert len(monthly_returns) == len(monthly_std)

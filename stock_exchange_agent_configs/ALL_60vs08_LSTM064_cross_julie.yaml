@@ -37,9 +37,9 @@ model:
 inference:
   voting: false                    # Whether to use voting for predictions
   batch_size: 2688           # Batch size for inference
-  top_percentage: 0.1                # Top percentage for selecting checkpoints from golden model search
+  top_percentage: 0.06                # Top percentage for selecting checkpoints from golden model search
   num_future_days: 0
-  max_ensemble_size: 50
+  max_ensemble_size: 80
 
 # Model pool configurations for golden model search and ensemble
 model_pool:
@@ -59,11 +59,11 @@ model_pool:
 ensemble_search:
     daily_return_50day_decay: 0.5     # How much decay for the daily return 50 trade days ago (between 0.0 and 1.0)
     volatility_rate: 0.0          # how much volatility you should consider. It is between 0.0 and 1.0
-    drawdown_rate: 0.01            # how much drawdown you should consider. It is between 0.0 and 1.0
-    min_weekly_win_rate: 0.5      # min win rate you should consider.
-    min_monthly_win_rate: 0.5     # min win rate you should consider.
-    min_weekly_IR_median: 0.0     # min weekly IR median you should consider.
-    min_monthly_IR_median: 0.0     # min monthly IR median you should consider.
+    drawdown_rate: 0.0            # how much drawdown you should consider. It is between 0.0 and 1.0
+    min_weekly_win_rate: 0.0      # min win rate you should consider.
+    min_monthly_win_rate: 0.0     # min win rate you should consider.
+    min_weekly_IR_median: -1000     # min weekly IR median you should consider.
+    min_monthly_IR_median: -1000     # min monthly IR median you should consider.
 
 # Data preprocessing
 preprocessing:

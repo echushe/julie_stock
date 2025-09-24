@@ -181,8 +181,16 @@ def plot_data(data_group : list, logarithm):
     all_value_top = -1e20
     all_value_bottom = 1e20
 
+    legend_desc_list = []
     for log_path, value_top, value_bottom, date_list, total_amount_list_2d in data_group:
         plt.plot(date_list, total_amount_list_2d, marker='.', linestyle='-')
+
+        legend_desc = os.path.basename(log_path.strip('/'))
+        for i in range(total_amount_list_2d.shape[1]):
+            if total_amount_list_2d.shape[1] > 1:
+                legend_desc_list.append(f'Repeat {i + 1}')
+            else:
+                legend_desc_list.append(f'{legend_desc}')
 
         title += f'\n{log_path}'
         if value_top > all_value_top:
@@ -191,7 +199,7 @@ def plot_data(data_group : list, logarithm):
             all_value_bottom = value_bottom
 
     # Add legend for all plots
-    plt.legend([log_path for log_path, _, _, _, _ in data_group])
+    plt.legend(legend_desc_list)
 
     # Set x-axis to yyyy-mm-dd format
     plt.gca().xaxis.set_major_formatter(plt.matplotlib.dates.DateFormatter('%Y-%m-%d'))

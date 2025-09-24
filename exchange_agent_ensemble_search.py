@@ -17,11 +17,12 @@ class ModelProfile:
         self.results = results
         self.total_amount_list_2d = total_amount_list_2d
 
+class LogDataCache:
+    model_pool_log_dir = ''
+    data_group = None
 
-def search_ensemble_by_logs(model_pool_log_dir, config, num_future_days, top_percentage, num_to_select, logging=True):
 
-    print_log(f"Searching for golden model in logs directory: {model_pool_log_dir}", level='INFO')
-    print_log(f"Number of future days for test: {num_future_days}", level='INFO')
+def load_data_from_model_pool_logs(model_pool_log_dir, logging=True):
 
     # get all sub dirs ending with regular expression model[0-9]+ under model_pool_log_dir
     sub_log_dirs = []
@@ -36,6 +37,23 @@ def search_ensemble_by_logs(model_pool_log_dir, config, num_future_days, top_per
             print_log(f"Processing log directory: {sub_log_dir}", level='INFO')
         result = primary_process(None, sub_log_dir)
         data_group.append(result)
+    
+    return data_group
+
+
+def search_ensemble_by_logs(model_pool_log_dir, config, num_future_days, top_percentage, num_to_select, logging=True):
+
+    print_log(f"Searching for golden model in logs directory: {model_pool_log_dir}", level='INFO')
+    print_log(f"Number of future days for test: {num_future_days}", level='INFO')
+
+    if LogDataCache.data_group is None or LogDataCache.model_pool_log_dir != model_pool_log_dir:
+        data_group = load_data_from_model_pool_logs(model_pool_log_dir, logging=logging)
+        LogDataCache.data_group = data_group
+        LogDataCache.model_pool_log_dir = model_pool_log_dir
+    else:
+        data_group = LogDataCache.data_group
+        if logging:
+            print_log(f"Using cached log data with {len(data_group)} entries.", level='INFO')
 
     print_log(f"Number of log directories (candidate models) processed: {len(data_group)}", level='INFO')
 

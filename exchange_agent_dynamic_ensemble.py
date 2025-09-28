@@ -206,15 +206,6 @@ if __name__ == '__main__':
             help='maximum size of ensemble',
             default=-1
         )
-    
-    # resume from existing log directory
-    # If specified, the script will check the existing log directory and resume from the last trade date
-    parser.add_argument(
-            '-rfld', '--resume_from_log_dir',
-            type=str,
-            help='specify the log directory to resume from',
-            default=''
-    )
 
     args = parser.parse_args()
 

@@ -45,54 +45,51 @@ def ensemble_static_simulation(args, config):
         print_log("Using dummy prediction instead of real model prediction.", level='INFO')
         models = None
         model_cluster = ModelCluster(models, config)
+    
     else:
-        checkpoint_dirs = config['model_pool']['checkpoint_dirs']
-
-        if len(args.single_model_path) > 0:
-            models = get_models_via_single_model_path(args.single_model_path, config)
+        last_history_date, last_future_date, ensemble_paths = \
+            search_ensemble_by_logs(
+                args.model_pool_log_dir,
+                config,
+                config['inference']['num_future_days'],
+                config['inference']['top_percentage'],
+                config['inference']['max_ensemble_size'],
+                logging=False)
         
-        elif args.use_ensemble:
-
-            last_history_date, last_future_date, ensemble_paths = \
-                search_ensemble_by_logs(
-                    args.model_pool_log_dir,
-                    config,
-                    config['inference']['num_future_days'],
-                    config['inference']['top_percentage'],
-                    config['inference']['max_ensemble_size'],
-                    logging=False)
-            
-            # The trade date starts with should be the last history date
-            # We should not run a newer ensemble for earlier dates
-            print_log(f"Last history date: {last_history_date}, Last future date: {last_future_date}", level='INFO')
-            models = get_models_via_paths(ensemble_paths, config)
-
-        else:
-            raise ValueError("Either single_model_path or use_ensemble must be specified.")
+        # The trade date starts with should be the last history date
+        # We should not run a newer ensemble for earlier dates
+        print_log(f"Last history date: {last_history_date}, Last future date: {last_future_date}", level='INFO')
+        models = get_models_via_paths(ensemble_paths, config)
 
         if config['model']['autoregressive']:
             model_cluster = REGModelCluster(models, config)
         else:
             model_cluster = CLSModelCluster(models, config)
 
-    final_total_amounts = []
-
-    for i in range(args.num_repeats):
+    if args.real_stock_exchange:
         configure_logger(log_name, config, not args.real_stock_exchange)
 
-        print_log('###########################################################################################', level='INFO')
-
         stock_agent = StockExchangeAgent(config, infer_dataset, model_cluster, args.real_stock_exchange)
-        if not args.real_stock_exchange and last_history_date is not None:
-            stock_agent.stock_reservoir.set_trade_date(last_history_date)
-        
-        final_total_amounts.append(stock_agent.run()[-1])
+        stock_agent.run()
+    
+    else:
+        final_total_amounts = []
 
-        print_log('###########################################################################################', level='INFO')
-        print_log('###########################################################################################', level='INFO')
-        print_log('###########################################################################################', level='INFO')
+        for i in range(args.num_repeats):
+            configure_logger(log_name, config, not args.real_stock_exchange)
 
-    if not args.real_stock_exchange:
+            print_log('###########################################################################################', level='INFO')
+
+            stock_agent = StockExchangeAgent(config, infer_dataset, model_cluster, args.real_stock_exchange)
+            if not args.real_stock_exchange and last_history_date is not None:
+                stock_agent.stock_reservoir.set_trade_date(last_history_date)
+            
+            final_total_amounts.append(stock_agent.run()[-1])
+
+            print_log('###########################################################################################', level='INFO')
+            print_log('###########################################################################################', level='INFO')
+            print_log('###########################################################################################', level='INFO')
+
         print_log(f"Mean of final total amounts: {sum(final_total_amounts) / len(final_total_amounts)}", level='INFO')
         themax = max(final_total_amounts)
         themin = min(final_total_amounts)
@@ -167,14 +164,6 @@ if __name__ == '__main__':
             help='use real stock exchange mode or simulation mode',
             action='store_true'
         )
-
-    # Path of a single model for verification
-    parser.add_argument(
-            '-sm', '--single_model_path',
-            type=str,
-            help='path of a single model for verification',
-            default=''
-        )
     
     # Load model ensemble
     parser.add_argument(
@@ -210,8 +199,8 @@ if __name__ == '__main__':
         '-tp', '--top_percentage',
         type=float,
         help='top percentage of models to consider',
-        default=0.1
-    )
+        default=-0.1
+        )
 
     # Specify max size of ensemble
     parser.add_argument(
@@ -220,15 +209,6 @@ if __name__ == '__main__':
             help='maximum size of ensemble',
             default=-1
         )
-    
-    # resume from existing log directory
-    # If specified, the script will check the existing log directory and resume from the last trade date
-    parser.add_argument(
-            '-rfld', '--resume_from_log_dir',
-            type=str,
-            help='specify the log directory to resume from',
-            default=''
-    )
 
     args = parser.parse_args()
 

@@ -115,14 +115,14 @@ def resume_from_finished_models(models, log_dir):
     return missing_models, model_missing_idxs
 
 
-def stock_exchange_agent_ensemble_search(args, config):
+def stock_exchange_agent_run_model_pool(args, config):
 
     config_file_name = os.path.basename(args.config).replace('.yaml', '')
 
     now = datetime.datetime.now()
     now_as_str = now.strftime('%Y-%m-%d_%H-%M-%S')
 
-    log_name = config_file_name + f'_ensemble_search/' + now_as_str
+    log_name = config_file_name + f'_run_model_pool/' + now_as_str
 
     configure_logger(log_name, config, log_to_file=True)
     print_log(json.dumps(config, indent=4), level='INFO')
@@ -142,7 +142,7 @@ def stock_exchange_agent_ensemble_search(args, config):
     models = sorted(models, key=lambda x: x[0])
 
     # Check models already finished, if there are already finished models, resume after them
-    models, model_idxs = resume_from_finished_models(models, config_file_name + '_ensemble_search/')
+    models, model_idxs = resume_from_finished_models(models, config_file_name + '_run_model_pool/')
 
     max_number_of_processes = config['model_pool']['max_number_of_processes']
 
@@ -312,4 +312,4 @@ if __name__ == '__main__':
             seed = random.randint(0, 2**32 - 1)
             torch.cuda.manual_seed_all(seed)
 
-    stock_exchange_agent_ensemble_search(args, config)
+    stock_exchange_agent_run_model_pool(args, config)

@@ -4,7 +4,7 @@ from decimal import Decimal, ROUND_HALF_UP, ROUND_UP, getcontext
 
 import numpy as np
 
-def load_infer_dataset(config, final_test=True):
+def load_infer_dataset(config, final_test=False):
 
     if final_test:
         start_date = config['dataset']['final_testing']['start_date']

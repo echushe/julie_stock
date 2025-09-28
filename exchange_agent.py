@@ -86,9 +86,7 @@ class StockExchangeAgent:
         self.personal_reservoir.force_set_amount(personal_amount)
 
 
-    def resume_from_log(self, log_file_path):
-
-        resume_logger(log_file_path, self.config)
+    def resume_from_log(self, log_file_path, last_history_date=None):
 
         if not os.path.exists(log_file_path):
             print_log(f"Log file {log_file_path} does not exist. Cannot resume agent state.", level='ERROR')
@@ -136,6 +134,9 @@ class StockExchangeAgent:
             parts = line.split()
 
             if len(parts) >= 6:
+                # check parts[-3] is number digits or not
+                if not parts[-3].isdigit():
+                    continue
                 ticker = parts[0].strip()
                 volume = int(parts[-3].strip())
                 stock_volumes[ticker] = volume
@@ -162,11 +163,17 @@ class StockExchangeAgent:
         for i, line in enumerate(lines_of_ticker_to_buy):
             parts = line.split()
             if len(parts) >= 4:
+                 # check parts[-1] is number digits or not
+                if not parts[-1].isdigit():
+                    continue
                 ticker = parts[0].strip()
                 volume = int(parts[-1].strip())
                 tickers_to_buy_dict[ticker] = volume
             else:
                 continue
+
+        if last_history_date is not None and last_trade_date < last_history_date:
+            raise ValueError(f"Last trade date {last_trade_date} in log file {log_file_path} is earlier than the specified last history date {last_history_date}.")
 
         # Now set the agent state
         self.stock_reservoir.set_trade_date(last_trade_date)
@@ -610,5 +617,49 @@ class StockExchangeAgent:
     def set_model_cluster(self, model_cluster : ModelCluster):
 
         self.model_cluster = model_cluster
+
+    def find_rightful_log_paths(log_dir):
+        log_paths = []
+        # find all log files in the log_dir (no recursion)
+        for file in os.listdir(log_dir):
+            if file.endswith('.log'):
+                log_paths.append(os.path.join(log_dir, file))
+
+        log_paths.sort()
+
+        lines_path_as_key = dict()
+        for log_path in log_paths:
+            if not os.path.exists(log_path):
+                print(f"Log file {log_path} does not exist.")
+                continue
+            
+            with open(log_path, "r") as f:
+                lines = f.readlines()
+                lines_path_as_key[log_path] = lines
+
+        rightful_log_paths = []
+        num_dates = 0
+
+        for log_path, lines in lines_path_as_key.items():
+            total_amount_list = []
+            date_list_l = []
+            for i in range(len(lines)):
+                line = lines[i]
+                if 'Date: ' in line:
+                    date_str = line.split()[-1].strip()
+                    next_line = lines[i + 1]
+
+                    date_list_l.append(date_str)
+                    total_amount_list.append(float(next_line.split()[-1].strip()))
+            
+            if len(date_list_l) > num_dates:
+                num_dates = len(date_list_l)
+
+            if len(date_list_l) == 0 or len(date_list_l) < num_dates:
+                continue
+
+            rightful_log_paths.append(log_path)
+
+        return rightful_log_paths
 
 

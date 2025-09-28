@@ -21,7 +21,7 @@ dataset:
     start_date: "2024-01-01"         # Start date for testing data
     end_date: "2099-12-31"           # End date for testing data
   final_testing:
-    start_date: "2025-04-01"         # Start date for final testing data
+    start_date: "2025-01-01"         # Start date for final testing data
     end_date: "2099-12-31"           # End date for final testing data
 
 # Model architecture
@@ -57,7 +57,7 @@ model_pool:
   ]  # List of directories containing model checkpoints
 
 ensemble_search:
-    daily_return_50day_decay: 0.5     # How much decay for the daily return 50 trade days ago (between 0.0 and 1.0)
+    daily_return_50day_decay: 0.2     # How much decay for the daily return 50 trade days ago (between 0.0 and 1.0)
     volatility_rate: 0.0          # how much volatility you should consider. It is between 0.0 and 1.0
     drawdown_rate: 0.0            # how much drawdown you should consider. It is between 0.0 and 1.0
     min_weekly_win_rate: 0.0      # min win rate you should consider.
@@ -87,8 +87,8 @@ logging:
   log_dir: "stock_exchange_agent_logs/ALL_60vs08_064/"  # Path to save log file
 
 stock_exchange_agent:
-  n_tickers_to_select_each_time: 40  # Number of tickers to select each time
-  personal_reservoir_initial_amount: 32000000      # Size of personal reservoir
+  n_tickers_to_select_each_time: 20  # Number of tickers to select each time
+  personal_reservoir_initial_amount: 2000000      # Size of personal reservoir
   human_defect_level:  0.5 #0.75       # Level of human defect (0.0-1.0), 
                                     # level 0 means you always buy in lowest price and sell in highest price
                                     # level 10 means you always buy in highest price and sell in lowest price

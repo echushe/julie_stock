@@ -1,38 +1,31 @@
-
-from train_daily_data.model_selection import get_models_via_checkpoint_dirs
+from exchange_agent import StockExchangeAgent
+from train_daily_data.model_selection import get_models_via_single_model_path
 from train_daily_data.model_cluster import ModelCluster, REGModelCluster, CLSModelCluster
 from exchange_agent_lb import *
-from train_daily_data.global_logger import configure_logger, print_log
-from decimal import Decimal, ROUND_HALF_UP, ROUND_UP, getcontext
-from exchange_agent import StockExchangeAgent
+from train_daily_data.global_logger import configure_logger, resume_logger, print_log
 
 import argparse
 import yaml
 import torch
 import random
 import numpy as np
+import json
 import os
 import datetime
-import json
 
 
-def stock_exchange_agent_balanced_search(args, config, n_models_in_each_checkpoint_dir=10):
+def single_model_simulation(args, config):
 
     config_file_name = os.path.basename(args.config).replace('.yaml', '')
-
-    log_name = config_file_name \
-        + f'_{n_models_in_each_checkpoint_dir:02d}' + f'_repeat{args.num_repeats:03d}_' \
-        + datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
-
-    configure_logger(log_name, config, log_to_file=True)
-    print_log(json.dumps(config, indent=4), level='INFO')
+    log_name = config_file_name + '_' + datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
+    configure_logger(log_name, config)
 
     infer_dataset = load_infer_dataset(config, final_test=args.final_test)
     config['my_name'] = config_file_name
-    config['model_pool']['n_models_in_each_checkpoint_dir'] = n_models_in_each_checkpoint_dir
 
     if args.gpu_id >= 0:
         config['device']['gpu_id'] = args.gpu_id
+        print_log(f"Overriding GPU id to {args.gpu_id}", level='INFO')
 
     print_log(json.dumps(config, indent=4), level='INFO')
 
@@ -42,28 +35,42 @@ def stock_exchange_agent_balanced_search(args, config, n_models_in_each_checkpoi
         models = None
         model_cluster = ModelCluster(models, config)
     else:
-        checkpoint_dirs = config['model_pool']['checkpoint_dirs']
-        models = get_models_via_checkpoint_dirs(checkpoint_dirs, config)
+        models = get_models_via_single_model_path(args.model_path, config)
 
         if config['model']['autoregressive']:
             model_cluster = REGModelCluster(models, config)
         else:
             model_cluster = CLSModelCluster(models, config)
-
+    
     final_total_amounts = []
 
-    for i in range(args.num_repeats):
-        configure_logger(log_name, config, log_to_file=True)
+    if args.resume_from_log_dir != '':
+        rightful_log_paths = StockExchangeAgent.find_rightful_log_paths(args.resume_from_log_dir)
 
-        print_log('###########################################################################################', level='INFO')
+        for log_path in rightful_log_paths:
+            resume_logger(log_path, config)
+            print_log('###########################################################################################', level='INFO')
+    
+            print_log(f"Resuming from log path: {log_path}", level='INFO')
+            stock_agent = StockExchangeAgent(config, infer_dataset, model_cluster, False)
+            stock_agent.resume_from_log(log_path)
+            final_total_amounts.append(stock_agent.run()[-1])
 
-        stock_agent = StockExchangeAgent(config, infer_dataset, model_cluster, real_stock_exchange_mode=False)
-        final_total_amounts.append(stock_agent.run()[-1])
+            print_log('###########################################################################################', level='INFO')
+            print_log('###########################################################################################', level='INFO')
+            print_log('###########################################################################################', level='INFO')
+    else:
+        for i in range(args.num_repeats):
+            configure_logger(log_name, config)
 
-        print_log('###########################################################################################', level='INFO')
-        print_log('###########################################################################################', level='INFO')
-        print_log('###########################################################################################', level='INFO')
+            print_log('###########################################################################################', level='INFO')
 
+            stock_agent = StockExchangeAgent(config, infer_dataset, model_cluster, False)
+            final_total_amounts.append(stock_agent.run()[-1])
+
+            print_log('###########################################################################################', level='INFO')
+            print_log('###########################################################################################', level='INFO')
+            print_log('###########################################################################################', level='INFO')
 
     print_log(f"Mean of final total amounts: {sum(final_total_amounts) / len(final_total_amounts)}", level='INFO')
     themax = max(final_total_amounts)
@@ -86,6 +93,7 @@ def stock_exchange_agent_balanced_search(args, config, n_models_in_each_checkpoi
     print_log("Count of final total amounts in each range:", level='INFO')
     for i in range(10):
         print_log(f"{thresholds[i]:.2f} - {thresholds[i + 1]:.2f}: {count_ranges[i]}", level='INFO')
+
 
 
 if __name__ == '__main__': 
@@ -125,28 +133,41 @@ if __name__ == '__main__':
             help='GPU id to use for training',
             default=-1
         )
+
+    # Path of a single model for verification
+    parser.add_argument(
+            '-m', '--model_path',
+            type=str,
+            help='path of a single model for verification',
+            default=''
+        )
     
     # dummy option to test the script without real models
     parser.add_argument(
             '-d', '--dummy',
             help='use dummy prediction instead of real model prediction',
             action='store_true')
-    
-    parser.add_argument(
-            '-nr', '--n_models_in_each_checkpoint_dir_range',
-            type=str,
-            help='number range of models in each checkpoint directory',
-            default='1-10'
-        )
-    
+
     parser.add_argument(
             '-ft', '--final_test',
             help='specify to use final test dataset',
             action='store_true'
         )
-
+    
+    # resume from existing log directory
+    # If specified, the script will check the existing log directory and resume from the last trade date
+    parser.add_argument(
+            '-rfld', '--resume_from_log_dir',
+            type=str,
+            help='specify the log directory to resume from',
+            default=''
+        )
 
     args = parser.parse_args()
+
+    # Load config file
+    with open(args.config, 'r') as f:
+        config = yaml.safe_load(f)
 
     if args.use_constant_seed:
         # Set the random seed for reproducibility
@@ -189,22 +210,4 @@ if __name__ == '__main__':
             seed = random.randint(0, 2**32 - 1)
             torch.cuda.manual_seed_all(seed)
 
-
-        # Load config file
-    with open(args.config, 'r') as f:
-        config = yaml.safe_load(f)
-
-    range_str = args.n_models_in_each_checkpoint_dir_range
-    if '-' in range_str:
-        start, end = map(int, range_str.split('-'))
-        n_models_in_each_checkpoint_dir_range = range(start, end + 1)
-    else:
-        n_models_in_each_checkpoint_dir_range = [int(range_str)]
-    for i in n_models_in_each_checkpoint_dir_range:
-        stock_exchange_agent_balanced_search(args, config, n_models_in_each_checkpoint_dir=i)
-
-    
-
-    
-
-
+    single_model_simulation(args, config)

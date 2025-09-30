@@ -1,8 +1,8 @@
 
-from train_daily_data.model_selection import get_models_via_checkpoint_dirs, resolve_gpu_plan
+from train_daily_data.model_selection import get_models_via_checkpoint_dirs, get_models_via_single_model_path, resolve_gpu_plan
 from train_daily_data.model_cluster import ModelCluster, REGModelCluster, CLSModelCluster
 from exchange_agent_lb import *
-from train_daily_data.global_logger import configure_logger, print_log
+from train_daily_data.global_logger import configure_logger, print_log, resume_logger
 from exchange_agent import StockExchangeAgent
 from exchange_agent_evaluate import evaluate_equity_curve
 
@@ -20,7 +20,20 @@ import time
 import re
 
 
-def inference_main_of_one_model(model, model_path, model_idx, gpu_id, config, log_name, num_repeats, infer_dataset, model_idx_path_and_scores):
+def inference_main_of_one_model(
+        model,
+        model_path,
+        model_idx,
+        gpu_id,
+        config,
+        log_name,
+        num_repeats,
+        infer_dataset,
+        model_idx_path_and_scores,
+        # Optional argument to resume from a specific log directory
+        # If specified, the agent will resume from the last trade date in that log directory
+        dir_to_resume_from=None
+    ):
 
     sub_log_name = log_name + f'_model{model_idx:03d}'
     configure_logger(sub_log_name, config, log_to_file=True)
@@ -54,20 +67,36 @@ def inference_main_of_one_model(model, model_path, model_idx, gpu_id, config, lo
 
     total_amount_record_2d = []
 
-    for i in range(num_repeats):
-        configure_logger(sub_log_name, config, log_to_file=True)
+    if dir_to_resume_from is not None:
+        rightful_log_paths, date_list = StockExchangeAgent.find_rightful_log_paths(dir_to_resume_from)
 
-        print_log('###########################################################################################', level='INFO')
+        for log_path in rightful_log_paths:
+            resume_logger(log_path, config)
+            print_log('###########################################################################################', level='INFO')
+    
+            print_log(f"Resuming from log path: {log_path}", level='INFO')
+            try:
+                stock_agent = StockExchangeAgent(config, infer_dataset, model_cluster, False)
+                stock_agent.resume_from_log(log_path)
+                total_amount_record_2d.append(stock_agent.run())
+            except Exception as e:
+                print_log(f"Error occurred while resuming stock agent: {e}", level='ERROR')
+            print_log('###########################################################################################', level='INFO')
 
-        try:
-            stock_agent = StockExchangeAgent(config, infer_dataset, model_cluster, real_stock_exchange_mode=False)
-            total_amount_record_2d.append(stock_agent.run())
-        except Exception as e:
-            print_log(f"Error occurred while running stock agent: {e}", level='ERROR')
+    else:
+        for i in range(num_repeats):
+            configure_logger(sub_log_name, config, log_to_file=True)
 
-        print_log('###########################################################################################', level='INFO')
-        print_log('###########################################################################################', level='INFO')
-        print_log('###########################################################################################', level='INFO')
+            print_log('###########################################################################################', level='INFO')
+
+            try:
+                stock_agent = StockExchangeAgent(config, infer_dataset, model_cluster, real_stock_exchange_mode=False)
+                total_amount_record_2d.append(stock_agent.run())
+            except Exception as e:
+                print_log(f"Error occurred while running stock agent: {e}", level='ERROR')
+
+            print_log('###########################################################################################', level='INFO')
+    
 
     configure_logger(sub_log_name, config, log_to_file=True)
     if len(total_amount_record_2d) == 0:
@@ -96,23 +125,41 @@ def inference_main_of_one_model(model, model_path, model_idx, gpu_id, config, lo
     model_idx_path_and_scores.append((model_idx, model_path, score))
 
 
-def resume_from_finished_models(models, log_dir):
+def models_and_subdirs_resume_from(log_dir, config):
 
     if not os.path.exists(log_dir):
-        os.makedirs(log_dir)
+        raise ValueError(f"Log directory {log_dir} does not exist.")
 
     # get all dirs ending with model[0-9]+ under log_dir (just under log_dir, no recursion)
-    model_dirs = [d for d in os.listdir(log_dir) if re.match(r'.*_model[0-9]+', d)]
-    model_existing_idxs = [int(re.search(r'model([0-9]+)', d).group(1)) for d in model_dirs]
+    model_log_dirs = [d for d in os.listdir(log_dir) if re.match(r'.*_model[0-9]+', d)]
+    model_log_dirs = sorted(model_log_dirs)
+    
+    log_dirs_and_models_model_path_as_key = dict()
+    for model_log_dir in model_log_dirs:
+        print_log(f"Processing log directory: {os.path.join(log_dir, model_log_dir)}", level='INFO')
+        # get all log files under model_log_dir
+        log_files = [f for f in os.listdir(os.path.join(log_dir, model_log_dir)) if f.endswith('.log')]
+        log_files = sorted(log_files)
+        if len(log_files) > 1:
+            # get model path from the first log file
+            first_log_file_path = os.path.join(log_dir, model_log_dir, log_files[0])
+            with open(first_log_file_path, 'r') as f:
+                lines = f.readlines()
+                model_path = lines[0].strip().split(' ')[-1]
+                log_dirs_and_models_model_path_as_key[model_path] = [os.path.join(log_dir, model_log_dir), None]
 
-    # arange all idxs
-    model_all_idxs = np.arange(len(models))
 
-    # get a list of idxs that are not in model_existing_idxs but in model_all_idxs
-    model_missing_idxs = model_all_idxs[~np.isin(model_all_idxs, model_existing_idxs)]
-    missing_models = [models[i] for i in model_missing_idxs]
+    for model_path, value in log_dirs_and_models_model_path_as_key.items():
 
-    return missing_models, model_missing_idxs
+        # load the model via model_path
+        #print_log(f"Loading model from path: {model_path}", level='INFO')
+        models_path_as_key = get_models_via_single_model_path(model_path, config, cpu_mode=True)
+        models_path_as_key = list(models_path_as_key.items())
+        #print(models_path_as_key)
+
+        value[1] = models_path_as_key[0][1]
+
+    return log_dirs_and_models_model_path_as_key
 
 
 def stock_exchange_agent_run_model_pool(args, config):
@@ -135,14 +182,24 @@ def stock_exchange_agent_run_model_pool(args, config):
 
     print_log(json.dumps(config, indent=4), level='INFO')
 
-    checkpoint_dirs = config['model_pool']['checkpoint_dirs']
-    models = get_models_via_checkpoint_dirs(checkpoint_dirs, config, cpu_mode=True)
-    # sort models by their keys (paths)
-    models = list(models.items())
-    models = sorted(models, key=lambda x: x[0])
+    if args.resume_from_log_dir != '':
+        print_log(f"Resuming from log directory: {args.resume_from_log_dir}", level='INFO')
+        log_dirs_and_models_model_path_as_key = models_and_subdirs_resume_from(args.resume_from_log_dir, config)
+        if len(log_dirs_and_models_model_path_as_key) == 0:
+            raise ValueError(f"No valid model log directories found in {args.resume_from_log_dir}.")
+        print_log(f"Found {len(log_dirs_and_models_model_path_as_key)} models to resume from.", level='INFO')
+        checkpoint_dirs = list(log_dirs_and_models_model_path_as_key.keys())
+        models = [(k, v[0], v[1]) for k,v in log_dirs_and_models_model_path_as_key.items()]
+        # sort models by their keys (paths)
+        models = sorted(models, key=lambda x: x[0])
 
-    # Check models already finished, if there are already finished models, resume after them
-    models, model_idxs = resume_from_finished_models(models, config_file_name + '_run_model_pool/')
+    else:
+        checkpoint_dirs = config['model_pool']['checkpoint_dirs']
+        models = get_models_via_checkpoint_dirs(checkpoint_dirs, config, cpu_mode=True)
+        # sort models by their keys (paths)
+        models = [(k, None, v) for k,v in models.items()]
+        models = sorted(models, key=lambda x: x[0])
+
 
     max_number_of_processes = config['model_pool']['max_number_of_processes']
 
@@ -153,10 +210,9 @@ def stock_exchange_agent_run_model_pool(args, config):
     pool = None
 
     # Go through each model and run inference in parallel
-    for i in range(len(model_idxs)):
+    for model_idx in range(len(models)):
 
-        model_idx = model_idxs[i]
-        path, model = models[model_idx]
+        path, model_log_dir, model = models[model_idx]
 
         if len(pool_results) % max_number_of_processes == 0:
             
@@ -167,7 +223,7 @@ def stock_exchange_agent_run_model_pool(args, config):
                 pool_results.clear()
 
             # Each round only execute up to max_number_of_processes
-            n_processes = min(max_number_of_processes, len(model_idxs) - i)
+            n_processes = min(max_number_of_processes, len(models) - model_idx)
             pool = multiprocessing.Pool(n_processes)
 
             gpu_plan_queue = resolve_gpu_plan(n_models=n_processes, config=config)
@@ -186,8 +242,18 @@ def stock_exchange_agent_run_model_pool(args, config):
         # Deep copy the model before sending it to a sub-process to avoid accumulation of shared object references
         model_cpy = copy.deepcopy(model)
         pool_result = pool.apply_async(inference_main_of_one_model,
-                        args=(model_cpy, path, model_idx, gpu_id, config, log_name, args.num_repeats, infer_dataset,
-                              model_idx_path_and_scores))
+                        args=(
+                            model_cpy,
+                            path,
+                            model_idx,
+                            gpu_id,
+                            config,
+                            log_name,
+                            args.num_repeats,
+                            infer_dataset,
+                            model_idx_path_and_scores,
+                            model_log_dir
+                        ))
         pool_results.append(pool_result)
 
         print_log(f"Starting process for model {model_idx:03} {path}...", level='INFO')

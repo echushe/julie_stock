@@ -45,7 +45,7 @@ def single_model_simulation(args, config):
     final_total_amounts = []
 
     if args.resume_from_log_dir != '':
-        rightful_log_paths = StockExchangeAgent.find_rightful_log_paths(args.resume_from_log_dir)
+        rightful_log_paths, date_list = StockExchangeAgent.find_rightful_log_paths(args.resume_from_log_dir)
 
         for log_path in rightful_log_paths:
             resume_logger(log_path, config)

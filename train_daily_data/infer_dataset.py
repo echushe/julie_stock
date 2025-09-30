@@ -420,7 +420,7 @@ if __name__ == "__main__":
         config = {
             'logging': {
                 'logging_level': 'DEBUG',
-                'log_dir': '/dir/to/my/logs/
+                'log_dir': '/dir/to/my/logs/',
             }
         },
         log_to_file=False,

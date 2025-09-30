@@ -1,7 +1,7 @@
 from exchange_agent_ensemble_search import search_ensemble_by_logs
 from train_daily_data.model_selection import get_models_via_paths
 from train_daily_data.model_cluster import ModelCluster, REGModelCluster, CLSModelCluster
-from train_daily_data.global_logger import configure_logger, print_log
+from train_daily_data.global_logger import configure_logger, resume_logger, print_log
 from exchange_agent import StockExchangeAgent
 from exchange_agent_lb import *
 
@@ -36,7 +36,7 @@ def ensemble_dynamic_simulation(args, config):
 
     print_log(json.dumps(config, indent=4), level='INFO')
 
-    # Store golden model paths for each future day
+    # Store ensemble model paths for each future day
     # (In this simulation golden models are cached for repeats)
     ensemble_paths_future_days_as_key = dict()
     for i in range(args.num_future_days + 1):
@@ -55,50 +55,137 @@ def ensemble_dynamic_simulation(args, config):
                 last_future_date = last_future_date_l
 
     final_total_amounts = []
-    for i in range(args.num_repeats):
-        configure_logger(log_name, config, True)
 
-        print_log('###########################################################################################', level='INFO')
+    if args.resume_from_log_dir != '':
 
-        # Setup stock agent
-        stock_agent = StockExchangeAgent(config, infer_dataset, ModelCluster(None, config), False)
+        rightful_log_paths, log_date_list = StockExchangeAgent.find_rightful_log_paths(args.resume_from_log_dir)
+        log_date_indices = {date: idx for idx, date in enumerate(log_date_list)}
 
-        #for key, value in stock_agent.stock_reservoir.next_trade_date_cache.items():
-        #    print(f"Next trade date for {key}: {value}")
+        for log_path in rightful_log_paths:
+            resume_logger(log_path, config)
 
-        # The date to start should be the last history date
-        stock_agent.stock_reservoir.set_trade_date(last_history_date)
+            print_log('###########################################################################################', level='INFO')
 
-        for i in range(args.num_future_days + 1):
+            stock_agent = None
+            total_amount_record = None
+            next_date = None
+            distance = -1
 
-            # Redo the search of golden models after each interval 
-            # (In this simulation golden models are cached for repeats)
-            if i % args.model_interval == 0:
-                print_log(f"Switching models at day {i}, date: {stock_agent.stock_reservoir.trade_date}, number of future days: {args.num_future_days - i}", level='INFO')
-                last_history_date_l, ensemble_paths = ensemble_paths_future_days_as_key[args.num_future_days - i]
-                assert last_history_date_l == stock_agent.stock_reservoir.trade_date
+            for i in range(args.num_future_days + 1):
 
-                models = get_models_via_paths(ensemble_paths, config)
-                if config['model']['autoregressive']:
-                    model_cluster = REGModelCluster(models, config)
-                else:
-                    model_cluster = CLSModelCluster(models, config)
-                stock_agent.set_model_cluster(model_cluster)
+                # Redo the search of golden models after each interval 
+                # (In this simulation golden models are cached for repeats)
+                if i % args.model_interval == 0:
+                    last_history_date_l, ensemble_paths = ensemble_paths_future_days_as_key[args.num_future_days - i]
+                    print_log(f"Switching models at day {i}, date: {last_history_date_l}, number of future days: {args.num_future_days - i}", level='INFO')
 
-            date, total_amount_record = stock_agent.step()
-            if date is None:
-                break
+                    if stock_agent is None:
+                        # calculate distance (number of trade days) between last_history_date_l and the last date in the log
+                        # if distance is smaller than the interval, then we can start resuming the stock agent
 
-        # Continute to finish the inference until the last available trade date
-        while date is not None:
-            date, total_amount_record = stock_agent.step()
+                        if last_history_date_l not in log_date_indices:
+                            error_msg = f"The last trade date in the log directory {log_date_list[-1]} is likely later than the last history date {last_history_date_l}."
+                            error_msg += "You cannot resume from a later date than the last history date."
+                            error_msg += "Running tests on validation set leaks future information. It is not allowed."
+                            raise ValueError(error_msg)
 
-        final_total_amounts.append(total_amount_record[-1])
+                        # get index of last_future_date_l in log_date_list
+                        last_history_date_index = log_date_indices[last_history_date_l]
+                        distance = len(log_date_list) - 1 - last_history_date_index
+                        
+                        # if distance is smaller than the interval or we have reached the last available model ensemble
+                        # it means last_history_date_l is the latest ensemble date before the last date in the log
+                        # so we can now initialize the stock agent
+                        if distance < args.model_interval or i == args.num_future_days:
+                            # Setup stock agent
+                            stock_agent = StockExchangeAgent(config, infer_dataset, ModelCluster(None, config), False)
+                            models = get_models_via_paths(ensemble_paths, config)
+                            if config['model']['autoregressive']:
+                                model_cluster = REGModelCluster(models, config)
+                            else:
+                                model_cluster = CLSModelCluster(models, config)
+                            stock_agent.set_model_cluster(model_cluster)
+                            next_date = stock_agent.resume_from_log(log_path, last_history_date_l)
 
-        print_log('###########################################################################################', level='INFO')
-        print_log('###########################################################################################', level='INFO')
-        print_log('###########################################################################################', level='INFO')
+                    else:
+                        assert last_history_date_l == stock_agent.stock_reservoir.trade_date
+                    
+                        models = get_models_via_paths(ensemble_paths, config)
+                        if config['model']['autoregressive']:
+                            model_cluster = REGModelCluster(models, config)
+                        else:
+                            model_cluster = CLSModelCluster(models, config)
+                        stock_agent.set_model_cluster(model_cluster)
 
+                # Consume the distance to reach the last date in the log
+                if stock_agent is not None:
+                    if distance >= 0:
+                        distance -= 1
+                    else:
+                        if stock_agent.stock_reservoir.trade_date is None:
+                            break
+                        next_date, total_amount_record = stock_agent.step()
+                        if next_date is None:
+                            break
+
+            # Continute to finish the inference until the last available trade date
+            while next_date is not None:
+                next_date, total_amount_record = stock_agent.step()
+
+            if total_amount_record is not None:
+                final_total_amounts.append(total_amount_record[-1])
+
+            print_log('###########################################################################################', level='INFO')
+
+    else:
+
+        for i in range(args.num_repeats):
+            configure_logger(log_name, config, True)
+
+            print_log('###########################################################################################', level='INFO')
+
+            # Setup stock agent
+            stock_agent = StockExchangeAgent(config, infer_dataset, ModelCluster(None, config), False)
+            total_amount_record = None
+
+            #for key, value in stock_agent.stock_reservoir.next_trade_date_cache.items():
+            #    print(f"Next trade date for {key}: {value}")
+
+            # The date to start should be the last history date
+            stock_agent.stock_reservoir.set_trade_date(last_history_date)
+
+            for i in range(args.num_future_days + 1):
+
+                # Redo the search of golden models after each interval 
+                # (In this simulation golden models are cached for repeats)
+                if i % args.model_interval == 0:
+                    last_history_date_l, ensemble_paths = ensemble_paths_future_days_as_key[args.num_future_days - i]
+                    print_log(f"Switching models at day {i}, date: {last_history_date_l}, number of future days: {args.num_future_days - i}", level='INFO')
+                    assert last_history_date_l == stock_agent.stock_reservoir.trade_date
+
+                    models = get_models_via_paths(ensemble_paths, config)
+                    if config['model']['autoregressive']:
+                        model_cluster = REGModelCluster(models, config)
+                    else:
+                        model_cluster = CLSModelCluster(models, config)
+                    stock_agent.set_model_cluster(model_cluster)
+
+                next_date, total_amount_record = stock_agent.step()
+                if next_date is None:
+                    break
+
+            # Continute to finish the inference until the last available trade date
+            while next_date is not None:
+                next_date, total_amount_record = stock_agent.step()
+
+            if total_amount_record is not None:
+                final_total_amounts.append(total_amount_record[-1])
+
+            print_log('###########################################################################################', level='INFO')
+
+    if len(final_total_amounts) == 0:
+        return
+    configure_logger(log_name, config, True)
     print_log(f"Mean of final total amounts: {sum(final_total_amounts) / len(final_total_amounts)}", level='INFO')
     themax = max(final_total_amounts)
     themin = min(final_total_amounts)
@@ -205,6 +292,15 @@ if __name__ == '__main__':
             type=int,
             help='maximum size of ensemble',
             default=-1
+        )
+    
+    # resume from existing log directory
+    # If specified, the script will check the existing log directory and resume from the last trade date
+    parser.add_argument(
+            '-rfld', '--resume_from_log_dir',
+            type=str,
+            help='specify the log directory to resume from',
+            default=''
         )
 
     args = parser.parse_args()

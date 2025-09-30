@@ -1,19 +1,76 @@
-# Quick Start
+# Julie Stock Quick Start
 
 ## 01 Short introduction
+
+```text
+julie_stock/
+├── datayes/
+│   └── china_daily_order_by_dates/
+│       ├── download_ashare_daily_data.py
+│       └── download_hk_daily_data.py
+├── datayes_data_sample/
+├── stock_exchange_agent_configs/
+│   └── ALL_60vs08_LSTM064_cross_julie.yaml
+├── stock_exchange_agent_logs/
+├── train_daily_data/
+│   ├── configs/
+│   │   └── ALL_60vs08_064/
+│   │       └── from_2014/
+│   │           ├── ALL_60vs08_LSTM064_crossed_01_14_19.yaml
+│   │           ├── ALL_60vs08_LSTM064_crossed_02_15_20.yaml
+│   │           ├── ALL_60vs08_LSTM064_crossed_03_16_21.yaml
+│   │           ├── ALL_60vs08_LSTM064_crossed_04_17_22.yaml
+│   │           └── ALL_60vs08_LSTM064_crossed_05_18_23.yaml
+│   ├── checkpoints/
+│   ├── logs/
+│   ├── models/
+│   │   ├── simple_model.py
+│   │   ├── lstm_model.py
+│   │   └── lstm_autoregressive.py
+│   ├── cls_dataset.py (and its dependencies)
+│   ├── infer_dataset.py (and its dependencies)
+│   └── train.py (and its dependencies)
+├── download_ashare_daily_data_endless_run.py
+├── download_hk_daily_data_endless_run.py
+├── exchange_agent_dynamic_ensemble.py (and its dependencies)
+├── exchange_agent_static_ensemble.py (and its dependencies)
+├── exchange_agent_single_model.py (and its dependencies)
+└── visualize_log.py
+```
 
 This is an avocational project providing assistance for my wife's stock investments.
 Daily k-line data of China's stock market is purchased and downloaded as a data set for training, validation, and test.
 
 ## 02 Data set management
 
-### 02.01 Division of the data set
+### 02.01 Source of data
+
+The daily k-line data of Chinese stock market is purchased and downloaded from a Chinese financial data provider DataYes.
+The data covers historic k-lines of all existed / existing Chinese tickers from as early as 1990 to present.
+Scripts inside `datayes/` especially in `datayes/china_daily_order_by_dates/` download historic data.
+While there are also scripts like `download_ashare_daily_data_endless_run` and `download_hk_daily_data_endless_run` for daily accumulative data download.
+
+The opensource version of this project provides one week data sample of A-share k-lines in `datayes_data_sample/`.
+
+- Download daily A-share stock k-line data accumulatively
+
+```sh
+python download_ashare_daily_data_endless_run.py --root_dir /dir/where/ashare/data/is/
+```
+
+- Download daily HK stock k-line data accumulatively
+
+```sh
+python download_hk_daily_data_endless_run --root_dir /dir/where/HK/data/is/
+```
+
+### 02.02 Division of the data set
 
 ![alt_text](readme_images/dataset_division.png)
 
 **The data is divided into training-validation part and rolling forward validation-test part. The training-validation part is assigned to multiple cross training-validation sessions. Each cross session has its own validation set.**
 
-### 02.02 The training
+### 02.03 The training
 
 ![alt_text](readme_images/model_pool.png)
 
@@ -29,13 +86,13 @@ Each training repeat will save 12 checkpoints and the optimal checkpoint who has
 Then each training repeat of each session has one optimal checkpoint. If there were 5 cross sessions, and each session has R training repeats, then there will be 5R optimal checkpoints saved.
 We sort optimal checkpoints by their performance in each cross session, and select top N models from R optimal checkpoints of each cross session, there would be 5N models selected as a model pool.
 
-### 02.03 Two types of validation set 
+### 02.04 Two types of validation set 
 
 There two types of validation set for different stages of model optimization.
 Validation sets used during the training are to choose "optimal" checkpoints before training overfitting.
 However, the other type of validation sets are used to select an "optimal" ensemble in each round of rolling forward validation and test.
 
-### 02.04 Rolling forward strategy for test
+### 02.05 Rolling forward strategy for test
 
 - Validation of models to build an "optimal" ensemble
 

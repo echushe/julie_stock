@@ -185,9 +185,7 @@ class StockExchangeAgent:
         self.tickers_to_buy_dict = tickers_to_buy_dict
 
         date = self.stock_reservoir.goto_next_trade_date()
-        if date is None:
-            print_log("No more trading dates available after resuming. Stopping the agent.", level='INFO')
-            return
+        return date
 
 
     def print_account_info(self, extra_info=''):
@@ -640,6 +638,8 @@ class StockExchangeAgent:
         rightful_log_paths = []
         num_dates = 0
 
+        date_list = None
+
         for log_path, lines in lines_path_as_key.items():
             total_amount_list = []
             date_list_l = []
@@ -654,12 +654,13 @@ class StockExchangeAgent:
             
             if len(date_list_l) > num_dates:
                 num_dates = len(date_list_l)
+                date_list = date_list_l
 
             if len(date_list_l) == 0 or len(date_list_l) < num_dates:
                 continue
 
             rightful_log_paths.append(log_path)
 
-        return rightful_log_paths
+        return rightful_log_paths, date_list
 
 

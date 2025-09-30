@@ -69,7 +69,15 @@ def search_ensemble_by_logs(model_pool_log_dir, config, num_future_days, top_per
     last_future_date = None
 
     model_profiles = []
+    max_num_of_dates = 0
     for log_path, date_list, total_amount_list_2d in data_group:
+        if len(date_list) > max_num_of_dates:
+            max_num_of_dates = len(date_list)
+
+    for log_path, date_list, total_amount_list_2d in data_group:
+        if len(date_list) < max_num_of_dates:
+            print_log(f"Warning: Log {log_path} has only {len(date_list)} days, less than max {max_num_of_dates}. It may affect evaluation.", level='WARNING')
+            continue
         if len(date_list) < num_future_days:
             raise ValueError(f"Not enough future days in log: {log_path}")
         #print_log(f'shape of total_amount_list_2d: {total_amount_list_2d.shape}', level='INFO')

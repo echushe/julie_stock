@@ -3,7 +3,7 @@ from train_daily_data.model_selection import get_models_via_checkpoint_dirs, get
 from train_daily_data.model_cluster import ModelCluster, REGModelCluster, CLSModelCluster
 from exchange_agent_ensemble_search import search_ensemble_by_logs
 from exchange_agent_lb import *
-from train_daily_data.global_logger import configure_logger, print_log
+from train_daily_data.global_logger import configure_logger, resume_logger, print_log
 
 import argparse
 import yaml
@@ -71,25 +71,48 @@ def ensemble_static_simulation(args, config):
 
         stock_agent = StockExchangeAgent(config, infer_dataset, model_cluster, args.real_stock_exchange)
         stock_agent.run()
-    
+
     else:
         final_total_amounts = []
 
-        for i in range(args.num_repeats):
-            configure_logger(log_name, config, not args.real_stock_exchange)
+        if args.resume_from_log_dir != '':
 
-            print_log('###########################################################################################', level='INFO')
+            rightful_log_paths, date_list = StockExchangeAgent.find_rightful_log_paths(args.resume_from_log_dir)
 
-            stock_agent = StockExchangeAgent(config, infer_dataset, model_cluster, args.real_stock_exchange)
-            if not args.real_stock_exchange and last_history_date is not None:
-                stock_agent.stock_reservoir.set_trade_date(last_history_date)
-            
-            final_total_amounts.append(stock_agent.run()[-1])
+            if date_list is not None and len(date_list) > 0 and date_list[-1] < last_history_date:
+                error_msg = f"The last trade date in the log directory {date_list[-1]} is earlier than the last history date {last_history_date}."
+                error_msg += "You cannot resume from an earlier date than the last history date."
+                error_msg += "Running tests on validation set leaks future information. It is not allowed."
+                raise ValueError(error_msg)
 
-            print_log('###########################################################################################', level='INFO')
-            print_log('###########################################################################################', level='INFO')
-            print_log('###########################################################################################', level='INFO')
+            for log_path in rightful_log_paths:
+                resume_logger(log_path, config)
 
+                print_log('###########################################################################################', level='INFO')
+        
+                print_log(f"Resuming from log path: {log_path}", level='INFO')
+                stock_agent = StockExchangeAgent(config, infer_dataset, model_cluster, False)
+                stock_agent.resume_from_log(log_path, last_history_date)
+                final_total_amounts.append(stock_agent.run()[-1])
+
+                print_log('###########################################################################################', level='INFO')
+        
+        else:
+
+            for i in range(args.num_repeats):
+                configure_logger(log_name, config, not args.real_stock_exchange)
+
+                print_log('###########################################################################################', level='INFO')
+
+                stock_agent = StockExchangeAgent(config, infer_dataset, model_cluster, args.real_stock_exchange)
+                if not args.real_stock_exchange and last_history_date is not None:
+                    stock_agent.stock_reservoir.set_trade_date(last_history_date)
+                
+                final_total_amounts.append(stock_agent.run()[-1])
+
+                print_log('###########################################################################################', level='INFO')
+
+        configure_logger(log_name, config, not args.real_stock_exchange)
         print_log(f"Mean of final total amounts: {sum(final_total_amounts) / len(final_total_amounts)}", level='INFO')
         themax = max(final_total_amounts)
         themin = min(final_total_amounts)
@@ -208,6 +231,15 @@ if __name__ == '__main__':
             type=int,
             help='maximum size of ensemble',
             default=-1
+        )
+
+    # resume from existing log directory
+    # If specified, the script will check the existing log directory and resume from the last trade date
+    parser.add_argument(
+            '-rfld', '--resume_from_log_dir',
+            type=str,
+            help='specify the log directory to resume from',
+            default=''
         )
 
     args = parser.parse_args()

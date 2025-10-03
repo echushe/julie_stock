@@ -682,7 +682,7 @@ class StockData:
 
 if __name__ == '__main__':
     # Example usage
-    root_dir = '/dir/to/my/data/hk_daily_index_order_by_dates'
+    root_dir = 'datayes_data_sample/hk_daily_index_order_by_dates'
     exchange_cd= 'XHKG'
     #root_dir = '../../data/us_daily_data'
     market = 'hk'

@@ -384,10 +384,14 @@ class InferDataset():
         return set(self.stock_data.klines_as_dict_date_as_key[date].keys())
 
 
+    def get_all_trade_dates(self):
+        return sorted(list(self.stock_samples_date_as_key.keys()))
+
+
 def test_case(differenced=False):
     # Test case for the ClsDataset class
-    stock_root_dir = '/dir/to/my/data/ashare_daily_stock_order_by_dates'
-    index_root_dir = '/dir/to/my/data/ashare_daily_index_order_by_dates'
+    stock_root_dir = 'datayes_data_sample/ashare_daily_stock_order_by_dates'
+    index_root_dir = 'datayes_data_sample/ashare_daily_index_order_by_dates'
     market = 'ashare'
     start_date = '2025-01-01'
     end_date = '2025-06-11'

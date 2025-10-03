@@ -559,9 +559,31 @@ class StockExchangeAgent:
                     pass #print_log(f"Error buying {ticker}: {e}", level='ERROR')
 
         else:
-            ticker_buy_sell_pairs = list(tickers_to_buy_dict.items()) + [(ticker, None) for ticker in tickers_to_sell]
-            # shuffle the pairs to randomize the order of buying and selling
-            random.shuffle(ticker_buy_sell_pairs)
+            # interleave two lists randomly, while keeping the relative order of items within each list unchanged
+            def random_merge(a, b):
+                merged = []
+                i, j = 0, 0
+                while i < len(a) and j < len(b):
+                    # randomly pick from a or b
+                    if random.randint(0, 1) == 0:
+                        merged.append(a[i])
+                        i += 1
+                    else:
+                        merged.append(b[j])
+                        j += 1
+                
+                # append the rest
+                if i < len(a):
+                    merged.extend(a[i:])
+                if j < len(b):
+                    merged.extend(b[j:])
+                
+                return merged
+
+            ticker_buy_pairs = [list(tickers_to_buy_dict.items())]
+            ticker_sell_pairs = [(ticker, None) for ticker in tickers_to_sell]
+            ticker_buy_sell_pairs = random_merge(ticker_buy_pairs[0], ticker_sell_pairs)
+            
             # Buy and sell in the randomized order
             for ticker, volume in ticker_buy_sell_pairs:
                 if volume is not None:

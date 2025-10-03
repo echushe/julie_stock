@@ -584,9 +584,13 @@ class ClsDataset(Dataset):
         Get all tickers of the date, including those whose training sample is available on this date.
         """
         if date not in self.stock_data.klines_as_dict_date_as_key:
-            raise set()
+            return set()
         return set(self.stock_data.klines_as_dict_date_as_key[date].keys())
-    
+
+
+    def get_all_trade_dates(self):
+        return sorted(list(self.stock_samples_date_as_key.keys()))
+
 
     def get_label(self, idx):
         # Retrieve the data sample at index `idx`
@@ -728,8 +732,8 @@ class ClsDataset(Dataset):
 
 def test_case(market, stock_root_dir, index_root_dir, exchange_cd, index_tickers, first_date, last_date):
     # Test case for the ClsDataset class
-    #stock_root_dir = '/dir/to/my/data/ashare_daily_stock_order_by_dates'
-    #index_root_dir = '/dir/to/my/data/ashare_daily_index_order_by_dates'
+    #stock_root_dir = 'datayes_data_sample/ashare_daily_stock_order_by_dates'
+    #index_root_dir = 'datayes_data_sample/ashare_daily_index_order_by_dates'
     start_date = first_date
     end_date = last_date
 
@@ -1002,8 +1006,8 @@ if __name__ == "__main__":
 
     test_case(
         market = 'ashare',
-        stock_root_dir = '/dir/to/my/data/ashare_daily_stock_order_by_dates',
-        index_root_dir = '/dir/to/my/data/ashare_daily_index_order_by_dates',
+        stock_root_dir = 'datayes_data_sample/ashare_daily_stock_order_by_dates',
+        index_root_dir = 'datayes_data_sample/ashare_daily_index_order_by_dates',
         exchange_cd = '',
         index_tickers = ['000001', '399001', '399300'],
         first_date=args.first_date,
@@ -1012,8 +1016,8 @@ if __name__ == "__main__":
     '''
     test_case(
         market= 'hk',
-        stock_root_dir = '/dir/to/my/data/hk_daily_stock_order_by_dates',
-        index_root_dir = '/dir/to/my/data/hk_daily_index_order_by_dates',
+        stock_root_dir = 'datayes_data_sample/hk_daily_stock_order_by_dates',
+        index_root_dir = 'datayes_data_sample/hk_daily_index_order_by_dates',
         exchange_cd= 'XHKG',
         index_tickers = ['HSI', 'HSCCI'])
     '''

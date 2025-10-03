@@ -340,4 +340,3 @@ class ClsTrainer:
                 else:
                     # Update the learning rate
                     decay_scheduler.step()
-

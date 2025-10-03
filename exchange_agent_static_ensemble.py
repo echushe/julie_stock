@@ -22,23 +22,33 @@ def ensemble_static_simulation(args, config):
     configure_logger(log_name, config, not args.real_stock_exchange)
 
     infer_dataset = load_infer_dataset(config, final_test=args.final_test)
+    all_trade_dates = infer_dataset.get_all_trade_dates()
+    all_trade_dates_indices = {date: idx for idx, date in enumerate(all_trade_dates)}
+
     config['my_name'] = config_file_name
 
     if args.gpu_id >= 0:
         config['device']['gpu_id'] = args.gpu_id
         print_log(f"Overriding GPU id to {args.gpu_id}", level='INFO')
 
+    # check last_history_date with all_trade_dates
+    if args.last_history_date is not None and args.last_history_date != '':
+        last_history_date = args.last_history_date
+        if last_history_date not in all_trade_dates:
+            raise ValueError(f"Last history date {last_history_date} not in the trade dates of the dataset.")
+        last_history_index = all_trade_dates_indices[last_history_date]
+        num_future_days = len(all_trade_dates) - last_history_index - 1
+        if num_future_days <= 0:
+            raise ValueError(f"Last history date {last_history_date} is the last trade date in the dataset. No future days to test.")
+        print_log(f"Setting number of future days to {num_future_days} based on last history date {last_history_date}.", level='INFO')
+        config["inference"]["last_history_date"] = last_history_date
+
     if args.top_percentage > 0:
         config["inference"]["top_percentage"] = args.top_percentage
     if args.max_ensemble_size > 0:
         config["inference"]["max_ensemble_size"] = args.max_ensemble_size
-    if args.num_future_days > 0:
-        config["inference"]["num_future_days"] = args.num_future_days
 
     print_log(json.dumps(config, indent=4), level='INFO')
-
-    last_history_date = None
-    last_future_date = None
 
     if args.dummy:
     # If dummy mode is enabled, use dummy prediction instead of real model prediction
@@ -47,18 +57,18 @@ def ensemble_static_simulation(args, config):
         model_cluster = ModelCluster(models, config)
     
     else:
-        last_history_date, last_future_date, ensemble_paths = \
+        last_future_date_l, ensemble_paths = \
             search_ensemble_by_logs(
                 args.model_pool_log_dir,
                 config,
-                config['inference']['num_future_days'],
+                config["inference"]["last_history_date"],
                 config['inference']['top_percentage'],
                 config['inference']['max_ensemble_size'],
                 logging=False)
         
         # The trade date starts with should be the last history date
         # We should not run a newer ensemble for earlier dates
-        print_log(f"Last history date: {last_history_date}, Last future date: {last_future_date}", level='INFO')
+        print_log(f"Last history date: {last_history_date}", level='INFO')
         models = get_models_via_paths(ensemble_paths, config)
 
         if config['model']['autoregressive']:
@@ -208,13 +218,13 @@ if __name__ == '__main__':
             help='directory of model_pool logs',
             default='logs'
         )
-    
-    # Specify number of future days for test
+
+    # Specify last history date for test
     parser.add_argument(
-            '-td', '--num_future_days',
-            type=int,
-            help='number of future days for test',
-            default=-1
+            '-td', '--last_history_date',
+            type=str,
+            help='last history date for test',
+            default=''
         )
     
     # top percentage

@@ -1,4 +1,4 @@
-# Julie Stock Quick Start
+# Julie Stock
 
 ## 01 Short introduction
 
@@ -47,8 +47,8 @@ Daily k-line data of China's stock market is purchased and downloaded as a data 
 
 The daily k-line data of Chinese stock market is purchased and downloaded from a Chinese financial data provider DataYes.
 The data covers historic k-lines of all existed / existing Chinese tickers from as early as 1990 to present.
-Scripts inside `datayes/` especially in `datayes/china_daily_order_by_dates/` download historic data.
-While there are also scripts like `download_ashare_daily_data_endless_run` and `download_hk_daily_data_endless_run` for daily accumulative data download.
+Scripts inside [datayes/](datayes/) especially in [datayes/china_daily_order_by_dates/](datayes/china_daily_order_by_dates/) download historic data.
+While there are also scripts like [download_ashare_daily_data_endless_run.py](download_ashare_daily_data_endless_run.py) and [download_hk_daily_data_endless_run.py](download_hk_daily_data_endless_run.py) for daily accumulative data download.
 
 The opensource version of this project provides one week data sample of A-share k-lines in `datayes_data_sample/`.
 
@@ -188,7 +188,7 @@ You should configure GPU plan wisely in the yaml file before executing this comm
 
 You can search for an ensemble for you using the following command.
 This search costs just a few seconds (time may vary on different hardware platforms).
-So, this search is usually included in `python exchange_agent_static_ensemble.py` and `python exchange_agent_dynamic_ensemble.py`.
+Since it is not a time costly program, this search is usually integrated in `python exchange_agent_static_ensemble.py` and `python exchange_agent_dynamic_ensemble.py`.
 You do not have to execute it separately.
 
 ```sh
@@ -197,8 +197,11 @@ python exchange_agent_ensemble_search.py \
 --model_pool_log_dir stock_exchange_agent_logs/ALL_60vs08_064/ALL_60vs08_LSTM064_cross_julie_ensemble_search/ \
 --top_percentage  0.1 \
 --max_ensemble_size 30 \
---num_future_days 40
+--last_history_date 2025-02-13
 ```
+
+- Explanation of `model_pool_log_dir`
+This is the location of model pool logs for optimal ensemble search
 
 - Explanation of `top_percentage`: 
 We will sort all the models by their training-validation performance on validation set 1 and 2.
@@ -208,8 +211,8 @@ We will sort all the models by their training-validation performance on validati
 You can continue to choose models from the set grabbed by `top_percentage` using least covariance metric. Models will be sort by covariance, and models of least covariance between each other will be selected.
 Covariance is mainly measured by their daily return on the validation set (it is not training-validation set).
 
-- Explanation of `num_future_days`:
-`num_future_days` tells the program the boundary between the validation set and the test set. Future days belong to the test set while other days belong to the validation set. The search of ensemble excludes future days (the test set) to avoid validation and search on the test set.
+- Explanation of `last_history_date`:
+The `last_history_date` is the date tells the program the boundary between the validation set and the test set. Future days belong to the test set while other days belong to the validation set. `last_history_date` is the last date in the validation set. The search of ensemble excludes future days (the test set) to avoid validation and search on the test set.
 
 
 ## 06 Test model ensemble(s)
@@ -217,7 +220,7 @@ Covariance is mainly measured by their daily return on the validation set (it is
 ### 06.01 Test a single model
 
 ```sh
-python exchange_agent_static_ensemble.py \
+python exchange_agent_single_model.py \
 --config stock_exchange_agent_configs/ALL_60vs08_LSTM064_cross_julie.yaml \
 --num_repeats 20 \
 --single_model_path train_daily_data/checkpoints/model_005_acc_0.1949_0.2002_neg_0.6434_0.6713_pos_0.5287_0.5278_bonus_+0.010474_+0.016927.pth
@@ -235,10 +238,13 @@ python exchange_agent_static_ensemble.py \
 --config stock_exchange_agent_configs/ALL_60vs08_LSTM064_cross_julie.yaml \
 --num_repeats 20 \
 --model_pool_log_dir stock_exchange_agent_logs/ALL_60vs08_064/ALL_60vs08_LSTM064_cross_julie_ensemble_search_0911/ \
---num_future_days 30 \
+--last_history_date 2025-08-22 \
 --top_percentage 0.1 \
 --max_ensemble_size 50
 ```
+
+- Explanation of `model_pool_log_dir`
+This is the location of model pool logs for optimal ensemble search.
 
 - Explanation of `top_percentage`: 
 We will sort all the models by their training-validation performance on validation set 1 and 2.
@@ -250,11 +256,11 @@ You can continue to choose models from the set grabbed by `top_percentage` using
 Covariance is mainly measured by their daily return on the validation set (it is not training-validation set).
 This program will use configured value of `max_ensemble_size` in the config file if this argument is not specified.
 
-- Explanation of `num_future_days`:
-`num_future_days` tells the program the boundary between the validation set and the test set. Future days belong to the test set while other days before or include the boundary belong to the validation set. The selection of ensemble excludes future days (the test set) to avoid "future data leaking" for model validation or search of "good" models from the model pool.
-This program will use configured value of `num_future_days` in the config file if this argument is not specified.
+- Explanation of `last_history_date`:
+`last_history_date` tells the program the boundary between the validation set and the test set. Future days belong to the test set while other days belong to the validation set where `last_history_date` is the last date in the validation set. The selection of ensemble excludes future days (the test set) to avoid "future data leaking" for model validation and searching of "good" models from the model pool.
+This program will use configured value of `last_history_date` in the config file if this argument is not specified.
 
-**Exact time range of test set include future days (future days ends with the last day of model pool logs), and extra days after the last day of model pool logs. For example, you have 30 future days after the last history day until the last day (2025-09-11) of model pool logs, and today is 2025-09-17, then you will have 30 + 4 = 34 trade days for testing of this ensemble.**
+**Exact time range of test set include future days (future days ends with the last day of model pool logs), and extra days after the last day of model pool logs. For example, you have 30 future days after the `last history date` until the last day (2025-09-12) of model pool logs, and today is 2025-09-18, then you will have 30 + 4 = 34 trade days for testing of this ensemble.**
 
 
 ### 06.03 Real prediction for stock exchange
@@ -275,7 +281,7 @@ This argument is specified when real-life stock selling / buying suggestions are
 It is recommended that `num_future_days` is set to zero for live predictions.
 So that, the lastest ensemble available from model pool logs (In this example, the latest time available for model pool logs is 2025-09-11) is used for prediction.
 
-- You can refer to 05.02 for explanations of `top_percentage` and `max_ensemble_size`.
+- You can refer to 06.02 for explanations of `top_percentage` and `max_ensemble_size`.
 
 
 ### 06.04 Test model ensembles dynamically according to time.
@@ -288,25 +294,33 @@ python exchange_agent_dynamic_ensemble.py \
 --config stock_exchange_agent_configs/ALL_60vs08_LSTM064_cross_julie.yaml \
 --num_repeats 20 \
 --log_dir stock_exchange_agent_logs/ALL_60vs08_064/ALL_60vs08_LSTM064_cross_julie_ensemble_search/ \
---num_future_days 132 \
---model_interval 5 \
+--last_history_date 2025-02-13 \
+--ensemble_update_interval 5 \
+--ensemble_update_weekday 4 \
 --top_percentage 0.1 \
 --max_ensemble_size 20
 ```
 
-- Explanation of `num_future_days`:
-`num_future_days` here specifies the largest possible number of future days, which is also the largest possible length of test set in this simulation.
-`num_future_days` will be subtracted by `model_interval` periodically during this simulation.
-It "shrinks" 
+- Explanation of `model_pool_log_dir`
+This is the location of model pool logs for optimal ensemble search.
 
-- Explanation of `model_interval`:
-`model_interval` is the period (number of trade days) between model ensemble updates.
-Each time `model_interval` trade days are finished in the simulation, `num_future_days` is subtracted by `model_interval` so that the simulation can search for a new model ensemble for the latest trade date.
+- Explanation of `last_history_date`:
+`last_history_date` here specifies the earliest boundary between the validation set and test set, which also indicates the largest possible length of test set in this simulation.
+The length of test set (number of future days) will be subtracted by `ensemble_update_interval` or reduced by `ensemble_update_weekday` periodically during this simulation. 
+
+- Explanation of `ensemble_update_interval`:
+`ensemble_update_interval` is the period (number of trade days) between model ensemble updates.
+Each time `ensemble_update_interval` trade days are finished in the simulation, number of trade days in test set ("future time") is subtracted by `ensemble_update_interval` so that the simulation can search for a new model ensemble for the latest trade date.
 Model ensemble should be periodically updated because data of stock market fluctuates.
 Old model ensembles may not suit new stock situations.
 This test emulates periodical ensemble updates in real-life stock investments.
 
-- For explanations of `top_percentage` and `max_ensemble_size`, you can refer to 05.02 for more information.
+- Explanation of `ensemble_update_weekday`:
+This is another configuration for periodical ensemble update.
+The simulation will update the ensemble on the specified weekday in each week by this argument.
+If this argument is sepcified, `ensemble_update_interval` is overwrote.
+
+- For explanations of `top_percentage` and `max_ensemble_size`, you can refer to 06.02 for more information.
 
 
 ## 07 How can I visualize validation / test results?

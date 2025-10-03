@@ -41,10 +41,10 @@ def load_data_from_model_pool_logs(model_pool_log_dir, logging=True):
     return data_group
 
 
-def search_ensemble_by_logs(model_pool_log_dir, config, num_future_days, top_percentage, num_to_select, logging=True):
+def search_ensemble_by_logs(model_pool_log_dir, config, last_history_date, top_percentage, num_to_select, logging=True):
 
     print_log(f"Searching for golden model in logs directory: {model_pool_log_dir}", level='INFO')
-    print_log(f"Number of future days for test: {num_future_days}", level='INFO')
+    print_log(f"Last history date for test: {last_history_date}", level='INFO')
 
     if LogDataCache.data_group is None or LogDataCache.model_pool_log_dir != model_pool_log_dir:
         data_group = load_data_from_model_pool_logs(model_pool_log_dir, logging=logging)
@@ -65,7 +65,6 @@ def search_ensemble_by_logs(model_pool_log_dir, config, num_future_days, top_per
     min_weekly_IR_median = config["ensemble_search"]["min_weekly_IR_median"]
     min_monthly_IR_median = config["ensemble_search"]["min_monthly_IR_median"]
 
-    last_history_date = None
     last_future_date = None
 
     model_profiles = []
@@ -74,12 +73,35 @@ def search_ensemble_by_logs(model_pool_log_dir, config, num_future_days, top_per
         if len(date_list) > max_num_of_dates:
             max_num_of_dates = len(date_list)
 
-    for log_path, date_list, total_amount_list_2d in data_group:
+    new_data_group = []
+    all_trade_dates_in_log = None
+    for i, (log_path, date_list, total_amount_list_2d) in enumerate(data_group):
         if len(date_list) < max_num_of_dates:
             print_log(f"Warning: Log {log_path} has only {len(date_list)} days, less than max {max_num_of_dates}. It may affect evaluation.", level='WARNING')
             continue
-        if len(date_list) < num_future_days:
-            raise ValueError(f"Not enough future days in log: {log_path}")
+        if all_trade_dates_in_log is None:
+            all_trade_dates_in_log = date_list
+        else:
+            # compare each date in date_list with all_trade_dates
+            if date_list != all_trade_dates_in_log:
+                raise ValueError(f"Date list in log {log_path} does not match the common trade dates.")
+        new_data_group.append((log_path, date_list, total_amount_list_2d))
+
+    # convert all date objects to strings of format 'YYYY-MM-DD'
+    all_trade_dates_in_log = [date.strftime('%Y-%m-%d') for date in all_trade_dates_in_log]
+    all_trade_dates_indices = {date: idx for idx, date in enumerate(all_trade_dates_in_log)}
+
+    #for date in all_trade_dates_in_log:
+    #    print_log(f"Trade date in logs: {date}", level='INFO')
+    if last_history_date not in all_trade_dates_indices:
+        raise ValueError(f"Last history date {last_history_date} not found in trade dates from logs.")
+    last_history_index = all_trade_dates_indices[last_history_date]
+    num_future_days = len(all_trade_dates_in_log) - last_history_index - 1
+
+    data_group = new_data_group
+
+    for log_path, date_list, total_amount_list_2d in data_group:
+
         #print_log(f'shape of total_amount_list_2d: {total_amount_list_2d.shape}', level='INFO')
         score, results = evaluate_equity_curve(
             total_amount_list_2d,
@@ -94,8 +116,7 @@ def search_ensemble_by_logs(model_pool_log_dir, config, num_future_days, top_per
             logging
         )
         model_profiles.append(ModelProfile(log_path, score, results, total_amount_list_2d))
-        if last_history_date is None:
-            last_history_date = date_list[-num_future_days - 1]
+
         if last_future_date is None:
             last_future_date = date_list[-1]
 
@@ -173,7 +194,7 @@ def search_ensemble_by_logs(model_pool_log_dir, config, num_future_days, top_per
     for log_profile in model_profiles:
         path_of_ensembles.append(log_profile.model_path)
 
-    return str(last_history_date), str(last_future_date), path_of_ensembles
+    return last_future_date.strftime('%Y-%m-%d'), path_of_ensembles
 
 
 if __name__ == '__main__': 
@@ -199,12 +220,12 @@ if __name__ == '__main__':
             default='logs'
         )
     
-        # Specify number of future days for test
+    # Specify last history date for test
     parser.add_argument(
-            '-td', '--num_future_days',
-            type=int,
-            help='number of future days for test',
-            default=-1
+            '-td', '--last_history_date',
+            type=str,
+            help='last history date for test',
+            default='2025-03-28'
         )
     
     # top percentage
@@ -235,17 +256,17 @@ if __name__ == '__main__':
         config["inference"]["top_percentage"] = args.top_percentage
     if args.max_ensemble_size > 0:
         config["inference"]["max_ensemble_size"] = args.max_ensemble_size
-    if args.num_future_days > 0:
-        config["inference"]["num_future_days"] = args.num_future_days
+
+    config["inference"]["last_history_date"] = args.last_history_date
 
     # If searching by logs, we can use the existing logs to find the best model
     print_log("Searching for the best model by existing logs...", level='INFO')
-    first_future_date, last_future_date, ensemble_paths = \
+    last_future_date, ensemble_paths = \
         search_ensemble_by_logs(
             model_pool_log_dir = args.model_pool_log_dir,
             config = config,
-            num_future_days = config["inference"]["num_future_days"],
+            last_history_date = config["inference"]["last_history_date"],
             top_percentage = config["inference"]["top_percentage"],
             num_to_select= config["inference"]["max_ensemble_size"])
 
-    print_log(f"Last history date: {first_future_date}, Last future date: {last_future_date}", level='INFO')
+    print_log(f"Last history date: {args.last_history_date}, Last future date: {last_future_date}", level='INFO')

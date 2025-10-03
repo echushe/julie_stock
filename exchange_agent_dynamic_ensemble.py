@@ -21,38 +21,85 @@ def ensemble_dynamic_simulation(args, config):
     configure_logger(log_name, config, True)
 
     infer_dataset = load_infer_dataset(config, final_test=args.final_test)
+    all_trade_dates = infer_dataset.get_all_trade_dates()
+    all_trade_dates_indices = {date: idx for idx, date in enumerate(all_trade_dates)}
+
     config['my_name'] = config_file_name
 
     if args.gpu_id >= 0:
         config['device']['gpu_id'] = args.gpu_id
         print_log(f"Overriding GPU id to {args.gpu_id}", level='INFO')
 
-    if args.num_future_days > 0:
-        config['inference']['num_future_days'] = args.num_future_days
+    # check last_history_date with all_trade_dates
+    if args.last_history_date is not None and args.last_history_date != '':
+        if args.last_history_date not in all_trade_dates:
+            raise ValueError(f"Last history date {args.last_history_date} not in the trade dates of the dataset.")
+        last_history_index = all_trade_dates_indices[args.last_history_date]
+        num_future_days = len(all_trade_dates) - last_history_index - 1
+        if num_future_days <= 0:
+            raise ValueError(f"Last history date {args.last_history_date} is the last trade date in the dataset. No future days to test.")
+        print_log(f"Setting number of future days to {num_future_days} based on last history date {args.last_history_date}.", level='INFO')
+        config["inference"]["last_history_date"] = args.last_history_date
+
     if args.top_percentage > 0:
         config['inference']['top_percentage'] = args.top_percentage
     if args.max_ensemble_size > 0:
         config['inference']['max_ensemble_size'] = args.max_ensemble_size
+    if args.ensemble_update_weekday >= 0 and args.ensemble_update_weekday <= 6:
+        config['inference']['ensemble_update_weekday'] = args.ensemble_update_weekday
+    if args.ensemble_update_interval > 0:
+        config['inference']['ensemble_update_interval'] = args.ensemble_update_interval
+    
 
     print_log(json.dumps(config, indent=4), level='INFO')
 
+    # index of last history date
+    last_history_index = all_trade_dates_indices[config["inference"]["last_history_date"]]
+    # Dates for test includes the last history date and all future dates
+    dates_for_test = all_trade_dates[last_history_index : ]
+    dates_for_test_indices = {date: idx for idx, date in enumerate(dates_for_test)}
+
     # Store ensemble model paths for each future day
     # (In this simulation golden models are cached for repeats)
-    ensemble_paths_future_days_as_key = dict()
-    for i in range(args.num_future_days + 1):
-        if i % args.model_interval == 0:
-            last_history_date_l, last_future_date_l, ensemble_paths = \
-                search_ensemble_by_logs(
-                    args.model_pool_log_dir,
-                    config,
-                    config['inference']['num_future_days'] - i,
-                    config['inference']['top_percentage'],
-                    config['inference']['max_ensemble_size'],
-                    logging=False)
-            ensemble_paths_future_days_as_key[args.num_future_days - i] = (last_history_date_l, ensemble_paths)
-            if i == 0:
-                last_history_date = last_history_date_l
-                last_future_date = last_future_date_l
+    ensemble_paths_date_as_key = dict()
+
+    ensemble_update_weekday = config['inference']['ensemble_update_weekday']
+    if ensemble_update_weekday < -1 or ensemble_update_weekday > 6:
+        raise ValueError("Ensemble update weekday must be between 0 and 6, or -1 if not specified.")
+    if ensemble_update_weekday in {5, 6}:
+        print_log("Warning: Ensemble update weekday is set to weekend (5=Saturday, 6=Sunday). Changing to Friday (4).", level='WARNING')
+        ensemble_update_weekday = 4
+
+    ensemble_update_interval = config['inference']['ensemble_update_interval']
+    if ensemble_update_interval <= 0:
+        raise ValueError("Ensemble update interval must be a positive integer.")
+
+    if ensemble_update_weekday < 0:
+        for i, trade_date in enumerate(dates_for_test):
+            if i % ensemble_update_interval == 0:
+                last_future_date_l, ensemble_paths = \
+                    search_ensemble_by_logs(
+                        args.model_pool_log_dir,
+                        config,
+                        trade_date,
+                        config['inference']['top_percentage'],
+                        config['inference']['max_ensemble_size'],
+                        logging=False)
+                ensemble_paths_date_as_key[trade_date] = ensemble_paths
+    else:
+        for i, trade_date in enumerate(dates_for_test):
+            trade_date_obj = datetime.datetime.strptime(trade_date, '%Y-%m-%d')
+            weekday = trade_date_obj.weekday()
+            if weekday == ensemble_update_weekday:
+                last_future_date_l, ensemble_paths = \
+                    search_ensemble_by_logs(
+                        args.model_pool_log_dir,
+                        config,
+                        trade_date,
+                        config['inference']['top_percentage'],
+                        config['inference']['max_ensemble_size'],
+                        logging=False)
+                ensemble_paths_date_as_key[trade_date] = ensemble_paths
 
     final_total_amounts = []
 
@@ -66,67 +113,62 @@ def ensemble_dynamic_simulation(args, config):
 
             print_log('###########################################################################################', level='INFO')
 
-            stock_agent = None
             total_amount_record = None
             next_date = None
-            distance = -1
 
-            for i in range(args.num_future_days + 1):
+            trade_dates_and_ensemble_paths = sorted(ensemble_paths_date_as_key.items(), key=lambda x: x[0])
+            ensemble_update_dates_until_last_log_date = []
 
-                # Redo the search of golden models after each interval 
-                # (In this simulation golden models are cached for repeats)
-                if i % args.model_interval == 0:
-                    last_history_date_l, ensemble_paths = ensemble_paths_future_days_as_key[args.num_future_days - i]
-                    print_log(f"Switching models at day {i}, date: {last_history_date_l}, number of future days: {args.num_future_days - i}", level='INFO')
+            for i, (trade_date, ensemble_paths) in enumerate(trade_dates_and_ensemble_paths):
+                if trade_date > log_date_list[-1]:
+                    break
+                ensemble_update_dates_until_last_log_date.append(trade_date)
 
-                    if stock_agent is None:
-                        # calculate distance (number of trade days) between last_history_date_l and the last date in the log
-                        # if distance is smaller than the interval, then we can start resuming the stock agent
+            if len(ensemble_update_dates_until_last_log_date) == 0:
+                error_msg = f"No ensemble update date is earlier than or equal to the last trade date in the log directory {log_date_list[-1]}."
+                error_msg += "You cannot resume from an earlier date than the ensemble update date (last history date)."
+                raise ValueError(error_msg)
+            
+            stock_agent = StockExchangeAgent(config, infer_dataset, ModelCluster(None, config), False)
+            ensemble_paths = ensemble_paths_date_as_key[ensemble_update_dates_until_last_log_date[-1]]
+            models = get_models_via_paths(ensemble_paths, config)
+            if config['model']['autoregressive']:
+                model_cluster = REGModelCluster(models, config)
+            else:
+                model_cluster = CLSModelCluster(models, config)
+            stock_agent.set_model_cluster(model_cluster)
+            next_date = stock_agent.resume_from_log(log_path, ensemble_update_dates_until_last_log_date[-1])
+            if next_date is None:
+                continue
 
-                        if last_history_date_l not in log_date_indices:
-                            error_msg = f"The last trade date in the log directory {log_date_list[-1]} is likely later than the last history date {last_history_date_l}."
-                            error_msg += "You cannot resume from a later date than the last history date."
-                            error_msg += "Running tests on validation set leaks future information. It is not allowed."
-                            raise ValueError(error_msg)
+            # find index of log_date_list[-1] in dates_for_test
+            if log_date_list[-1] not in dates_for_test_indices:
+                error_msg = f"The last trade date in the log directory {log_date_list[-1]} is not within the test dates."
+                raise ValueError(error_msg)
+            
+            last_log_date_index_in_test = dates_for_test_indices[log_date_list[-1]]
 
-                        # get index of last_future_date_l in log_date_list
-                        last_history_date_index = log_date_indices[last_history_date_l]
-                        distance = len(log_date_list) - 1 - last_history_date_index
-                        
-                        # if distance is smaller than the interval or we have reached the last available model ensemble
-                        # it means last_history_date_l is the latest ensemble date before the last date in the log
-                        # so we can now initialize the stock agent
-                        if distance < args.model_interval or i == args.num_future_days:
-                            # Setup stock agent
-                            stock_agent = StockExchangeAgent(config, infer_dataset, ModelCluster(None, config), False)
-                            models = get_models_via_paths(ensemble_paths, config)
-                            if config['model']['autoregressive']:
-                                model_cluster = REGModelCluster(models, config)
-                            else:
-                                model_cluster = CLSModelCluster(models, config)
-                            stock_agent.set_model_cluster(model_cluster)
-                            next_date = stock_agent.resume_from_log(log_path, last_history_date_l)
+            for i in range(last_log_date_index_in_test + 1, len(dates_for_test)):
 
+                trade_date = dates_for_test[i]
+
+                # Redo the search of ensemble models at each update date
+                # (In this simulation ensemble models are cached for repeats)
+                if trade_date in ensemble_paths_date_as_key:
+                    ensemble_paths = ensemble_paths_date_as_key[trade_date]
+                    print_log(f"Switching models at day {i}, date: {trade_date}", level='INFO')
+                    assert trade_date == stock_agent.stock_reservoir.trade_date
+
+                    models = get_models_via_paths(ensemble_paths, config)
+                    if config['model']['autoregressive']:
+                        model_cluster = REGModelCluster(models, config)
                     else:
-                        assert last_history_date_l == stock_agent.stock_reservoir.trade_date
-                    
-                        models = get_models_via_paths(ensemble_paths, config)
-                        if config['model']['autoregressive']:
-                            model_cluster = REGModelCluster(models, config)
-                        else:
-                            model_cluster = CLSModelCluster(models, config)
-                        stock_agent.set_model_cluster(model_cluster)
+                        model_cluster = CLSModelCluster(models, config)
+                    stock_agent.set_model_cluster(model_cluster)
 
-                # Consume the distance to reach the last date in the log
-                if stock_agent is not None:
-                    if distance >= 0:
-                        distance -= 1
-                    else:
-                        if stock_agent.stock_reservoir.trade_date is None:
-                            break
-                        next_date, total_amount_record = stock_agent.step()
-                        if next_date is None:
-                            break
+                next_date, total_amount_record = stock_agent.step()
+                if next_date is None:
+                    break
 
             # Continute to finish the inference until the last available trade date
             while next_date is not None:
@@ -152,16 +194,16 @@ def ensemble_dynamic_simulation(args, config):
             #    print(f"Next trade date for {key}: {value}")
 
             # The date to start should be the last history date
-            stock_agent.stock_reservoir.set_trade_date(last_history_date)
+            stock_agent.stock_reservoir.set_trade_date(config["inference"]["last_history_date"])
 
-            for i in range(args.num_future_days + 1):
+            for i, trade_date in enumerate(dates_for_test):
 
                 # Redo the search of golden models after each interval 
                 # (In this simulation golden models are cached for repeats)
-                if i % args.model_interval == 0:
-                    last_history_date_l, ensemble_paths = ensemble_paths_future_days_as_key[args.num_future_days - i]
-                    print_log(f"Switching models at day {i}, date: {last_history_date_l}, number of future days: {args.num_future_days - i}", level='INFO')
-                    assert last_history_date_l == stock_agent.stock_reservoir.trade_date
+                if trade_date in ensemble_paths_date_as_key:
+                    ensemble_paths = ensemble_paths_date_as_key[trade_date]
+                    print_log(f"Switching models at day {i}, date: {trade_date}", level='INFO')
+                    assert trade_date == stock_agent.stock_reservoir.trade_date
 
                     models = get_models_via_paths(ensemble_paths, config)
                     if config['model']['autoregressive']:
@@ -262,21 +304,31 @@ if __name__ == '__main__':
             default='logs'
         )
     
-    # Specify number of future days for test
+    # Specify last history date for test
     parser.add_argument(
-            '-td', '--num_future_days',
-            type=int,
-            help='number of future days for test',
-            default=-1
+            '-td', '--last_history_date',
+            type=str,
+            help='last history date for test',
+            default=''
         )
     
-    # Days interval to changes models
+    # Days interval to changes models, if weekday is not specified
+    # e.g., if specified 5, then change models every 5 days
     parser.add_argument(
-            '-mi', '--model_interval',
+            '-mi', '--ensemble_update_interval',
             type=int,
             help='number of days to change models',
-            default=-1
+            default=5
         )
+    
+    # specify weekday to change ensemble models
+    # e.g., if specified 0, then change models every Monday
+    parser.add_argument(
+        '-mcw', '--ensemble_update_weekday',
+        type=int,
+        help='weekday to change models (0=Monday, 4=Friday)',
+        default=-1
+    )
     
     # top percentage
     parser.add_argument(

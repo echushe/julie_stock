@@ -278,5 +278,3 @@ class RegTrainer:
                 else:
                     # Update the learning rate
                     decay_scheduler.step()
-
-

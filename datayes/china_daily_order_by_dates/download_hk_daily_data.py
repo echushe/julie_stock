@@ -7,7 +7,7 @@ import argparse
 from datetime import datetime, timedelta
 
 
-token = "000000000000000000000000000000000000000000000000000000000"
+token = "00000000"
 
 def read_ashare_tickers(file_path):
 

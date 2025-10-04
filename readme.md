@@ -365,4 +365,10 @@ In this visualization example, 800 optimal checkpoints are collected as a model 
 
 #### 07.01.04 **Visualization showing which weekday is best for dynamic ensemble update**
 
+- Monday is weekday 0
+- Tuesday is weekday 1
+- Wednesday is weekday 2
+- Thursday is weekday 3
+- Friday is weekday 4
+
 ![alt_text](readme_images/visual_equity_curve_mean_log_weekdays.png)

@@ -112,7 +112,7 @@ def ensemble_dynamic_simulation(args, config):
             resume_logger(log_path, config)
 
             print_log('###########################################################################################', level='INFO')
-
+            print_log(f"Resuming from log path: {log_path}", level='INFO')
             total_amount_record = None
             next_date = None
 
@@ -131,6 +131,7 @@ def ensemble_dynamic_simulation(args, config):
             
             stock_agent = StockExchangeAgent(config, infer_dataset, ModelCluster(None, config), False)
             ensemble_paths = ensemble_paths_date_as_key[ensemble_update_dates_until_last_log_date[-1]]
+            print_log(f"Switching models, date: {ensemble_update_dates_until_last_log_date[-1]}", level='INFO')
             models = get_models_via_paths(ensemble_paths, config)
             if config['model']['autoregressive']:
                 model_cluster = REGModelCluster(models, config)
@@ -156,7 +157,7 @@ def ensemble_dynamic_simulation(args, config):
                 # (In this simulation ensemble models are cached for repeats)
                 if trade_date in ensemble_paths_date_as_key:
                     ensemble_paths = ensemble_paths_date_as_key[trade_date]
-                    print_log(f"Switching models at day {i}, date: {trade_date}", level='INFO')
+                    print_log(f"Switching models, date: {trade_date}", level='INFO')
                     assert trade_date == stock_agent.stock_reservoir.trade_date
 
                     models = get_models_via_paths(ensemble_paths, config)
@@ -202,7 +203,7 @@ def ensemble_dynamic_simulation(args, config):
                 # (In this simulation golden models are cached for repeats)
                 if trade_date in ensemble_paths_date_as_key:
                     ensemble_paths = ensemble_paths_date_as_key[trade_date]
-                    print_log(f"Switching models at day {i}, date: {trade_date}", level='INFO')
+                    print_log(f"Switching models, date: {trade_date}", level='INFO')
                     assert trade_date == stock_agent.stock_reservoir.trade_date
 
                     models = get_models_via_paths(ensemble_paths, config)

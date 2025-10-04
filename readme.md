@@ -327,7 +327,7 @@ If this argument is sepcified, `ensemble_update_interval` is overwrote.
 
 ```sh
 python visualize_log.py \
---log_dir stock_exchange_agent_logs/CLS/ALL_60vs08_julie_LSTM064_cross_2025-07-24_18-12-40/ \
+--log_dir stock_exchange_agent_logs/ALL_60vs08_064/ALL_60vs08_LSTM064_cross_julie_2025-10-02_weekday4 \
 --mean \
 --logarithm
 ```
@@ -341,6 +341,8 @@ Show `value / inital_value` if this argument is not specified.
 Otherwise, equity curve would be `log1.01 (value) - log1.01 (initial_value)`.
 
 ### 07.01 Visualization of dynamic ensemble test (rolling forward simulation)
+
+In this visualization example, 800 optimal checkpoints are collected as a model pool. `top_percentage` is set to 0.06 which means 800 * 0.06 = 48 top models are selected as an ensemble if we don't consider the usage of least covariance. The ensemble is updated on Friday in each week (if the Friday is a holiday, dynamic ensemble update will skip this day).
 
 #### 07.01.01 **Visualization showing equity curve of all 'repeats'**
 
@@ -359,3 +361,8 @@ Otherwise, equity curve would be `log1.01 (value) - log1.01 (initial_value)`.
 **Ys in this chart are log1.01 VS the initial value. Each small grid represents 1% increase or descrease**
 
 ![alt_text](readme_images/visual_equity_curve_mean_log.png)
+
+
+#### 07.01.04 **Visualization showing which weekday is best for dynamic ensemble update**
+
+![alt_text](readme_images/visual_equity_curve_mean_log_weekdays.png)

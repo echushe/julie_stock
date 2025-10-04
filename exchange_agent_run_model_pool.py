@@ -168,8 +168,9 @@ def stock_exchange_agent_run_model_pool(args, config):
 
     now = datetime.datetime.now()
     now_as_str = now.strftime('%Y-%m-%d_%H-%M-%S')
+    now_as_str_date = now.strftime('%Y-%m-%d')
 
-    log_name = config_file_name + f'_run_model_pool/' + now_as_str
+    log_name = config_file_name + f'_run_model_pool_{now_as_str_date}/' + now_as_str
 
     configure_logger(log_name, config, log_to_file=True)
     print_log(json.dumps(config, indent=4), level='INFO')

@@ -199,7 +199,7 @@ def plot_data(data_group : list, logarithm):
             all_value_bottom = value_bottom
 
     # Add legend for all plots
-    plt.legend(legend_desc_list)
+    plt.legend(legend_desc_list, loc='upper left')
 
     # Set x-axis to yyyy-mm-dd format
     plt.gca().xaxis.set_major_formatter(plt.matplotlib.dates.DateFormatter('%Y-%m-%d'))

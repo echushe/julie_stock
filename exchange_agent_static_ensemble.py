@@ -197,13 +197,6 @@ if __name__ == '__main__':
             help='use real stock exchange mode or simulation mode',
             action='store_true'
         )
-    
-    # Load model ensemble
-    parser.add_argument(
-            '-lg', '--use_ensemble',
-            help='specify to load model ensemble',
-            action='store_true'
-        )
 
     parser.add_argument(
             '-ft', '--final_test',

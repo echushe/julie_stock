@@ -27,9 +27,10 @@ class StockExchangeAgent:
             Decimal(self.config['stock_exchange_agent']['personal_reservoir_initial_amount']))
 
         self.stock_reservoir = StockReservoir(self.infer_dataset, self.config)
-        
-        self.tickers_to_sell, self.tickers_to_buy_dict = [], dict()
-        
+
+        self.tickers_to_sell = []
+        self.tickers_to_buy_volumes = []
+
         self.real_stock_exchange_mode = real_stock_exchange_mode
         if self.real_stock_exchange_mode:
             
@@ -99,7 +100,7 @@ class StockExchangeAgent:
             for line in lines:
                 if 'Amount of total' in line:
                     self.total_amount_record.append(float(line.split()[-1].strip()))
-                if 'Date: ' in line:
+                if line.startswith('Date: '):
                     lines_after_last_trade_date = []
                     last_trade_date = line.split()[-1].strip()
                 lines_after_last_trade_date.append(line)
@@ -159,7 +160,7 @@ class StockExchangeAgent:
             else:
                 continue
 
-        tickers_to_buy_dict = dict()
+        tickers_to_buy_volumes = []
         for i, line in enumerate(lines_of_ticker_to_buy):
             parts = line.split()
             if len(parts) >= 4:
@@ -168,7 +169,7 @@ class StockExchangeAgent:
                     continue
                 ticker = parts[0].strip()
                 volume = int(parts[-1].strip())
-                tickers_to_buy_dict[ticker] = volume
+                tickers_to_buy_volumes.append((ticker, volume))
             else:
                 continue
 
@@ -182,7 +183,7 @@ class StockExchangeAgent:
         for ticker, volume in stock_volumes.items():
             self.stock_reservoir.volumes_ticker_as_key[ticker] = TickerReservoir(volume)
         self.tickers_to_sell = tickers_to_sell
-        self.tickers_to_buy_dict = tickers_to_buy_dict
+        self.tickers_to_buy_volumes = tickers_to_buy_volumes
 
         date = self.stock_reservoir.goto_next_trade_date()
         return date
@@ -211,7 +212,7 @@ class StockExchangeAgent:
         return self.personal_reservoir.get_amount() + self.stock_reservoir.get_amount()
     
 
-    def save_agent_state(self, state_dir, tickers_to_sell, tickers_to_buy_dict):
+    def save_agent_state(self, state_dir, tickers_to_sell, tickers_to_buy_volumes):
 
         if state_dir is None:
             #print("No state directory specified. Agent state will not be saved.")
@@ -227,7 +228,7 @@ class StockExchangeAgent:
                 ticker: self.infer_dataset.get_name_via_ticker(ticker) for ticker in tickers_to_sell},
             'tickers_to_buy': {
                 ticker: [self.infer_dataset.get_name_via_ticker(ticker), volume]
-                for ticker, volume in tickers_to_buy_dict.items()},
+                for ticker, volume in tickers_to_buy_volumes},
         }
         if not os.path.exists(state_dir):
             os.makedirs(state_dir)
@@ -504,7 +505,7 @@ class StockExchangeAgent:
         print_log(tickers_to_sell_msg, level='INFO')
 
         print_log("Tickers to buy: ", level='INFO')
-        tickers_to_buy_dict = dict()
+        tickers_to_buy_volumes = []
 
         tickers_to_buy_msg = '\n'
         for ticker in tickers_to_buy:
@@ -519,20 +520,20 @@ class StockExchangeAgent:
 
             ticker_name = self.infer_dataset.get_name_via_ticker(ticker, self.stock_reservoir.trade_date)
             tickers_to_buy_msg += f'{ticker} {ticker_name}\t{amount/10000:>4.0f}万 {volume:>6}\n'
-            tickers_to_buy_dict[ticker] = volume
+            tickers_to_buy_volumes.append((ticker, volume))
         print_log(tickers_to_buy_msg, level='INFO')
 
-        return tickers_to_sell, tickers_to_buy_dict
+        return tickers_to_sell, tickers_to_buy_volumes
 
 
-    def __buy_and_sell(self, tickers_to_sell, tickers_to_buy_dict):
+    def __buy_and_sell(self, tickers_to_sell, tickers_to_buy_volumes):
 
         buying_first = self.config['stock_exchange_agent']['buying_first']
         selling_first = self.config['stock_exchange_agent']['selling_first']
 
         if buying_first and not selling_first:
             # Buy first, then sell
-            for ticker, volume in tickers_to_buy_dict.items():
+            for ticker, volume in tickers_to_buy_volumes:
                 try:
                     self.stock_reservoir.buy(self.personal_reservoir, ticker, volume)
                 except ValueError as e:
@@ -552,7 +553,7 @@ class StockExchangeAgent:
                 except ValueError as e:
                     pass #print_log(f"Error selling {ticker}: {e}", level='ERROR')
 
-            for ticker, volume in tickers_to_buy_dict.items():
+            for ticker, volume in tickers_to_buy_volumes:
                 try:
                     self.stock_reservoir.buy(self.personal_reservoir, ticker, volume)
                 except ValueError as e:
@@ -580,10 +581,10 @@ class StockExchangeAgent:
                 
                 return merged
 
-            ticker_buy_pairs = [list(tickers_to_buy_dict.items())]
+            ticker_buy_pairs = [(ticker, volume) for ticker, volume in tickers_to_buy_volumes]
             ticker_sell_pairs = [(ticker, None) for ticker in tickers_to_sell]
-            ticker_buy_sell_pairs = random_merge(ticker_buy_pairs[0], ticker_sell_pairs)
-            
+            ticker_buy_sell_pairs = random_merge(ticker_buy_pairs, ticker_sell_pairs)
+
             # Buy and sell in the randomized order
             for ticker, volume in ticker_buy_sell_pairs:
                 if volume is not None:
@@ -618,14 +619,14 @@ class StockExchangeAgent:
         if self.stock_reservoir.trade_date is None:
             raise ValueError("Trade date is not set. Please initialize the trade date before calling step().")
 
-        self.__buy_and_sell(self.tickers_to_sell, self.tickers_to_buy_dict)
+        self.__buy_and_sell(self.tickers_to_sell, self.tickers_to_buy_volumes)
 
-        self.tickers_to_sell, self.tickers_to_buy_dict = self.__predict()
+        self.tickers_to_sell, self.tickers_to_buy_volumes = self.__predict()
 
         total_amount = self.get_account_total_amount()
         self.total_amount_record.append(total_amount)
 
-        self.save_agent_state(self.agent_state_dir, self.tickers_to_sell, self.tickers_to_buy_dict)
+        self.save_agent_state(self.agent_state_dir, self.tickers_to_sell, self.tickers_to_buy_volumes)
 
         date = self.stock_reservoir.goto_next_trade_date()
 

@@ -88,7 +88,7 @@ We sort optimal checkpoints by their performance in each cross session, and sele
 
 ### 02.04 Two types of validation set 
 
-There two types of validation set for different stages of model optimization.
+There are two types of validation sets for different stages of model optimization.
 Validation sets used during the training are to choose "optimal" checkpoints before training overfitting.
 However, the other type of validation sets are used to select an "optimal" ensemble in each round of rolling forward validation and test.
 
@@ -105,7 +105,7 @@ In addition, all rolling forward data is isolated from training-validation data 
 - The time interval for model ensemble evolution
 
 The time interval between each round of rolling forward validation-test is usually 5 trade days or 20 trade days.
-We should redo the validation of models from the model pool to make new ensemble after each time interval.
+We should redo the validation of models from the model pool to make a new ensemble after each time interval.
 So that we can always keep the ensemble "fresh" for the next "future" days.
 This simulates real world actions that we should periodically update / evolute the ensemble to make it adapted to the lasted stock market situation.
 
@@ -156,7 +156,7 @@ This command is to view trained models sort by bonus on validation set 1 and val
 
 ```sh
 python -m train_daily_data.model_selection \
---config stock_exchange_agent_configs/ALL_60vs08_LSTM064_cross_julie.yaml \
+--config stock_exchange_agent_configs/ALL_60vs08_LSTM064.yaml \
 --checkpoint_dir train_daily_data/checkpoints/ALL_60vs08_064/from_2014/01 \
 --n_models_in_each_checkpoint_dir 5 \
 --min_bonus 0.00
@@ -172,7 +172,7 @@ The following is an example of how we run these models one by one.
 
 ```sh
 python exchange_agent_run_model_pool.py \
---config stock_exchange_agent_configs/ALL_60vs08_LSTM064_cross_julie.yaml \
+--config stock_exchange_agent_configs/ALL_60vs08_LSTM064.yaml \
 --num_repeats 20
 ```
 
@@ -182,6 +182,20 @@ From statistics’ point of view, n repeats could make the fluctuation (standard
 
 Running of a model pool is usually time costly. It may need from at least a few hours to even a few days.
 You should configure GPU plan wisely in the yaml file before executing this command.
+
+**We should continue to extend logs of the model pool after a time interval (one week, 5 days, 20 days, etc) for the rolling forward validation**
+
+
+```sh
+python exchange_agent_run_model_pool.py \
+--config stock_exchange_agent_configs/ALL_60vs08_LSTM064.yaml \
+--resume_from_log_dir stock_exchange_agent_logs/ALL_60vs08_064/ALL_60vs08_LSTM064_run_model_pool_2025-09-18/
+```
+
+- Explanation of `resume_from_log_dir`:
+This is the directory of model pool logs you resume from.
+You can also totally re-run the model pool from the beginning, but it is usually time consuming.
+We have got an option for you to resume the model pool logs from the previous date these logs end with.
 
 
 ## 05 Search for ensemble from the model pool
@@ -193,12 +207,22 @@ You do not have to execute it separately.
 
 ```sh
 python exchange_agent_ensemble_search.py \
---config stock_exchange_agent_configs/ALL_60vs08_LSTM064_cross_julie.yaml \
---model_pool_log_dir stock_exchange_agent_logs/ALL_60vs08_064/ALL_60vs08_LSTM064_cross_julie_ensemble_search/ \
+--config stock_exchange_agent_configs/ALL_60vs08_LSTM064.yaml \
+--model_pool_log_dir stock_exchange_agent_logs/ALL_60vs08_064/ALL_60vs08_LSTM064_run_model_pool_2025-09-18/ \
+--last_history_date 2025-02-13 \
 --top_percentage  0.1 \
---max_ensemble_size 30 \
---last_history_date 2025-02-13
+--max_ensemble_size 30
 ```
+
+You can set the last three arguments `last_history_date`, `top_percentage`, and `max_ensemble_size` in the configuration file,
+so you can run this command in a simple way like this:
+
+```sh
+python exchange_agent_ensemble_search.py \
+--config stock_exchange_agent_configs/ALL_60vs08_LSTM064.yaml \
+--model_pool_log_dir stock_exchange_agent_logs/ALL_60vs08_064/ALL_60vs08_LSTM064_run_model_pool_2025-09-18/
+```
+
 
 - Explanation of `model_pool_log_dir`
 This is the location of model pool logs for optimal ensemble search
@@ -221,7 +245,7 @@ The `last_history_date` is the date tells the program the boundary between the v
 
 ```sh
 python exchange_agent_single_model.py \
---config stock_exchange_agent_configs/ALL_60vs08_LSTM064_cross_julie.yaml \
+--config stock_exchange_agent_configs/ALL_60vs08_LSTM064.yaml \
 --num_repeats 20 \
 --single_model_path train_daily_data/checkpoints/model_005_acc_0.1949_0.2002_neg_0.6434_0.6713_pos_0.5287_0.5278_bonus_+0.010474_+0.016927.pth
 ```
@@ -235,12 +259,22 @@ From statistics' point of view, n repeats could make the fluctuation (standard d
 
 ```sh
 python exchange_agent_static_ensemble.py \
---config stock_exchange_agent_configs/ALL_60vs08_LSTM064_cross_julie.yaml \
+--config stock_exchange_agent_configs/ALL_60vs08_LSTM064.yaml \
 --num_repeats 20 \
---model_pool_log_dir stock_exchange_agent_logs/ALL_60vs08_064/ALL_60vs08_LSTM064_cross_julie_ensemble_search_0911/ \
+--model_pool_log_dir stock_exchange_agent_logs/ALL_60vs08_064/ALL_60vs08_LSTM064_run_model_pool_2025-09-18/ \
 --last_history_date 2025-08-22 \
 --top_percentage 0.1 \
 --max_ensemble_size 50
+```
+
+You can set `last_history_date`, `top_percentage`, and `max_ensemble_size` in the configuration file,
+they can be ignored in the command like this:
+
+```sh
+python exchange_agent_static_ensemble.py \
+--config stock_exchange_agent_configs/ALL_60vs08_LSTM064.yaml \
+--num_repeats 20 \
+--model_pool_log_dir stock_exchange_agent_logs/ALL_60vs08_064/ALL_60vs08_LSTM064_run_model_pool_2025-09-18/
 ```
 
 - Explanation of `model_pool_log_dir`
@@ -267,9 +301,10 @@ This program will use configured value of `last_history_date` in the config file
 
 ```sh
 python exchange_agent_static_ensemble.py \
---config stock_exchange_agent_configs/ALL_60vs08_LSTM064_cross_julie.yaml \
+--config stock_exchange_agent_configs/ALL_60vs08_LSTM064.yaml \
 --real_stock_exchange \
---model_pool_log_dir stock_exchange_agent_logs/ALL_60vs08_064/ALL_60vs08_LSTM064_cross_julie_ensemble_search_0911/ \
+--model_pool_log_dir stock_exchange_agent_logs/ALL_60vs08_064/ALL_60vs08_LSTM064_run_model_pool_2025-09-18/ \
+--last_history_date 2025-09-12 \
 --top_percentage 0.1 \
 --max_ensemble_size 50
 ```
@@ -277,11 +312,7 @@ python exchange_agent_static_ensemble.py \
 - Explanation of `real_stock_exchange`:
 This argument is specified when real-life stock selling / buying suggestions are needed according to the latest available stock data.
 
-- In this case, `num_future_days` is not specified, which means it is set to the value configured in the config file.
-It is recommended that `num_future_days` is set to zero for live predictions.
-So that, the lastest ensemble available from model pool logs (In this example, the latest time available for model pool logs is 2025-09-11) is used for prediction.
-
-- You can refer to 06.02 for explanations of `top_percentage` and `max_ensemble_size`.
+- You can refer to 06.02 for explanations of `last_history_date`, `top_percentage` and `max_ensemble_size`.
 
 
 ### 06.04 Test model ensembles dynamically according to time.
@@ -291,14 +322,23 @@ In this simulation, the model ensemble is periodically updated according to time
 
 ```sh
 python exchange_agent_dynamic_ensemble.py \
---config stock_exchange_agent_configs/ALL_60vs08_LSTM064_cross_julie.yaml \
+--config stock_exchange_agent_configs/ALL_60vs08_LSTM064.yaml \
 --num_repeats 20 \
---log_dir stock_exchange_agent_logs/ALL_60vs08_064/ALL_60vs08_LSTM064_cross_julie_ensemble_search/ \
---last_history_date 2025-02-13 \
+--model_pool_log_dir stock_exchange_agent_logs/ALL_60vs08_064/ALL_60vs08_LSTM064_run_model_pool_2025-09-18/ \
 --ensemble_update_interval 5 \
 --ensemble_update_weekday 4 \
+--last_history_date 2025-02-13 \
 --top_percentage 0.1 \
 --max_ensemble_size 20
+```
+
+You can run this command in the following way because `ensemble_update_interval`, `ensemble_update_weekday`, `last_history_date`, `top_percentage`, and `max_ensemble_size` are all configurable in the configuration file.
+
+```sh
+python exchange_agent_dynamic_ensemble.py \
+--config stock_exchange_agent_configs/ALL_60vs08_LSTM064.yaml \
+--num_repeats 20 \
+--model_pool_log_dir stock_exchange_agent_logs/ALL_60vs08_064/ALL_60vs08_LSTM064_run_model_pool_2025-09-18/
 ```
 
 - Explanation of `model_pool_log_dir`
@@ -322,6 +362,15 @@ If this argument is sepcified, `ensemble_update_interval` is overwrote.
 
 - For explanations of `top_percentage` and `max_ensemble_size`, you can refer to 06.02 for more information.
 
+**You can resume this test in incoming days accumulatively**
+
+```sh
+python exchange_agent_dynamic_ensemble.py \
+--config stock_exchange_agent_configs/ALL_60vs08_LSTM064.yaml \
+--model_pool_log_dir stock_exchange_agent_logs/ALL_60vs08_064/ALL_60vs08_LSTM064_run_model_pool_2025-09-18/ \
+--resume_from_log_dir stock_exchange_agent_log/ALL_60vs08_064/ALL_60vs08_LSTM064_2025-09-23/
+```
+
 
 ## 07 How can I visualize validation / test results?
 
@@ -342,7 +391,9 @@ Otherwise, equity curve would be `log1.01 (value) - log1.01 (initial_value)`.
 
 ### 07.01 Visualization of dynamic ensemble test (rolling forward simulation)
 
-In this visualization example, 800 optimal checkpoints are collected as a model pool. `top_percentage` is set to 0.06 which means 800 * 0.06 = 48 top models are selected as an ensemble if we don't consider the usage of least covariance. The ensemble is updated on Friday in each week (if the Friday is a holiday, dynamic ensemble update will skip this day).
+In this visualization example, 800 optimal checkpoints (160 'best' optimal checkpoints from each cross session) are collected as a model pool.
+`top_percentage` is set to 0.06 which means 800 * 0.06 = 48 top models are selected as an ensemble if we don't consider the usage of least covariance.
+The ensemble is updated weekly on each Friday (if one Friday is happened to be a holiday, dynamic ensemble update will skip this day).
 
 #### 07.01.01 **Visualization showing equity curve of all 'repeats'**
 

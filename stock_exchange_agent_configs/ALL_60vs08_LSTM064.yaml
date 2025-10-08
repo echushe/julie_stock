@@ -4,10 +4,10 @@
 dataset:
   market: "ashare"                # Market type (ashare, nasdaq, etc.)
   exchange_cd: ""               # Exchange code (e.g., XSHG for Shanghai Stock Exchange)
-  stock_root_dir: "/dir/to/my/data/ashare_daily_stock_order_by_dates"  # Path to input datase
+  stock_root_dir: "/home/shengcn/extra_disk_2t/finance/ashare_daily_stock_order_by_dates"  # Path to input datase
   stock_tickers: []                 # List of stock tickers
   stock_tickers_to_exclude: ['9']     # List of stock tickers to exclude
-  index_root_dir: "/dir/to/my/data/ashare_daily_index_order_by_dates"  # Path to index dataset
+  index_root_dir: "/home/shengcn/extra_disk_2t/finance/ashare_daily_index_order_by_dates"  # Path to index dataset
   index_tickers: ['000001', '000300', '399001', '399300'] #['000016', '000300', '000905', '000010'] 
                 #['399001', '399006', '399330', '399005', '399300']  # List of index tickers
   sequence_length: 60                # Length of input sequences
@@ -38,16 +38,18 @@ inference:
   voting: false                    # Whether to use voting for predictions
   batch_size: 2688           # Batch size for inference
   top_percentage: 0.06                # Top percentage for selecting checkpoints from golden model search
-  num_future_days: 0
+  last_history_date: '2025-01-02'
+  ensemble_update_weekday: 4         # Weekday to update ensemble models (0=Monday, 1=Tuesday, ..., 6=Sunday)
+  ensemble_update_interval: 5         # Days interval to changes models, if weekday is not specified
   max_ensemble_size: 80
 
 # Model pool configurations for golden model search and ensemble
 model_pool:
   min_checkpoint_idx: 3              # Minimum checkpoint index to consider
   min_validation_bonus_of_checkpoints: 0.0 # Minimum validation bonus of checkpoints
-  n_models_in_each_checkpoint_dir: 160         # Number of models in each checkpoint directory
+  n_models_in_each_checkpoint_dir: 200         # Number of models in each checkpoint directory
   sort_metric: 'harmonic_mean'                 # Metric to sort checkpoints (sum, sum_with_penalty, sum_with_balance_1, multiply, harmonic_mean)
-  max_number_of_processes: 20  # Maximum number of processes for running of model pool
+  max_number_of_processes: 20                  # Maximum number of processes for running of model pool
   checkpoint_dirs: [
     'train_daily_data/checkpoints/ALL_60vs08_064/from_2014/01',
     'train_daily_data/checkpoints/ALL_60vs08_064/from_2014/02',
@@ -78,8 +80,8 @@ device:
   gpu_plan:                          # GPU plan for model cluster inference, format: a dictionary of id-weight pairs
     0: 10
     1: 10
-    2: 0
-    3: 0
+    2: 10
+    3: 10
 
 # Logging and monitoring
 logging:
@@ -87,11 +89,11 @@ logging:
   log_dir: "stock_exchange_agent_logs/ALL_60vs08_064/"  # Path to save log file
 
 stock_exchange_agent:
-  n_tickers_to_select_each_time: 20  # Number of tickers to select each time
-  personal_reservoir_initial_amount: 2000000      # Size of personal reservoir
+  n_tickers_to_select_each_time: 40  # Number of tickers to select each time
+  personal_reservoir_initial_amount: 4000000      # Size of personal reservoir
   human_defect_level:  0.5 #0.75       # Level of human defect (0.0-1.0), 
                                     # level 0 means you always buy in lowest price and sell in highest price
                                     # level 10 means you always buy in highest price and sell in lowest price
   exchange_near_close_time: true     # Whether to use random price around close price
-  buying_first: true                # Whether to buy first
+  buying_first: false                # Whether to buy first
   selling_first: true               # Whether to sell first

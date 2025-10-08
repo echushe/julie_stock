@@ -4,10 +4,10 @@
 dataset:
   market: "ashare"                # Market type (ashare, nasdaq, etc.)
   exchange_cd: ""               # Exchange code (e.g., XSHG for Shanghai Stock Exchange)
-  stock_root_dir: "/dir/to/my/data/ashare_daily_stock_order_by_dates"  # Path to input datase
+  stock_root_dir: "datayes_data_sample/ashare_daily_stock_order_by_dates"  # Path to input datase
   stock_tickers: []                 # List of stock tickers
   stock_tickers_to_exclude: ['9']     # List of stock tickers to exclude
-  index_root_dir: "/dir/to/my/data/ashare_daily_index_order_by_dates"  # Path to index dataset
+  index_root_dir: "datayes_data_sample/ashare_daily_index_order_by_dates"  # Path to index dataset
   index_tickers: ['000001', '000300', '399001', '399300'] #['000016', '000300', '000905', '000010'] 
                 #['399001', '399006', '399330', '399005', '399300']  # List of index tickers
   sequence_length: 60                # Length of input sequences

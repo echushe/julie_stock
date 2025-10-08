@@ -33,15 +33,12 @@ def ensemble_static_simulation(args, config):
 
     # check last_history_date with all_trade_dates
     if args.last_history_date is not None and args.last_history_date != '':
-        last_history_date = args.last_history_date
-        if last_history_date not in all_trade_dates:
-            raise ValueError(f"Last history date {last_history_date} not in the trade dates of the dataset.")
-        last_history_index = all_trade_dates_indices[last_history_date]
+        if args.last_history_date not in all_trade_dates:
+            raise ValueError(f"Last history date {args.last_history_date} not in the trade dates of the dataset.")
+        last_history_index = all_trade_dates_indices[args.last_history_date]
         num_future_days = len(all_trade_dates) - last_history_index - 1
-        if num_future_days <= 0:
-            raise ValueError(f"Last history date {last_history_date} is the last trade date in the dataset. No future days to test.")
-        print_log(f"Setting number of future days to {num_future_days} based on last history date {last_history_date}.", level='INFO')
-        config["inference"]["last_history_date"] = last_history_date
+        print_log(f"Setting number of future days to {num_future_days} based on last history date {args.last_history_date}.", level='INFO')
+        config["inference"]["last_history_date"] = args.last_history_date
 
     if args.top_percentage > 0:
         config["inference"]["top_percentage"] = args.top_percentage
@@ -49,6 +46,7 @@ def ensemble_static_simulation(args, config):
         config["inference"]["max_ensemble_size"] = args.max_ensemble_size
 
     print_log(json.dumps(config, indent=4), level='INFO')
+    last_history_date = config["inference"]["last_history_date"]
 
     if args.dummy:
     # If dummy mode is enabled, use dummy prediction instead of real model prediction
@@ -276,9 +274,8 @@ if __name__ == '__main__':
             torch.cuda.manual_seed_all(seed)
     else:
         print("Using variable random seed for each run.")
-        # Set a random seed based on current time
-        seed_base = int(datetime.datetime.now().timestamp() * 1000) % 2**32 # to ensure it fits in 32 bits
-        random.seed(seed_base)
+        # Set a random seed based on os.urandom
+        random.seed(int.from_bytes(os.urandom(8), 'big'))
 
         seed = random.randint(0, 2**32 - 1)
         np.random.seed(seed)

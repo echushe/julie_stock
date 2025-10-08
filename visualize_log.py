@@ -1,5 +1,6 @@
 import argparse
 import os
+import tkinter as tk
 from matplotlib.ticker import FixedLocator, FuncFormatter
 import numpy as np
 from datetime import datetime
@@ -88,7 +89,7 @@ def primary_process(single_log_path, log_dir):
         date_list_l = []
         for i in range(len(lines)):
             line = lines[i]
-            if 'Date: ' in line:
+            if line.startswith('Date: '):
                 date_str = line.split()[-1].strip()
                 next_line = lines[i + 1]
 
@@ -177,13 +178,34 @@ def unify_data(data_group: list, logarithm):
 def plot_data(data_group : list, logarithm):
 
     plt.figure(figsize=(10, 5))
+    root = tk.Tk()
+    screen_h = root.winfo_screenheight()
+    h = screen_h / 120
+    root.destroy()
+
+    base_font_size = 24
+    base_line_width = 3
+    base_grid_line_width = 2
+
+    scale_factor = h / 15  # Adjust the denominator to change scaling sensitivity
+    #print(scale_factor)
+    adjusted_font_size = max(int(base_font_size * scale_factor), 1)
+    adjusted_line_width = max(int(base_line_width * scale_factor), 1)
+    adjusted_grid_line_width = max(int(base_grid_line_width * scale_factor), 1)
+
     title = f'Total Amounts Over Dates'
     all_value_top = -1e20
     all_value_bottom = 1e20
 
     legend_desc_list = []
     for log_path, value_top, value_bottom, date_list, total_amount_list_2d in data_group:
-        plt.plot(date_list, total_amount_list_2d, marker='.', linestyle='-')
+        plt.plot(
+            date_list, 
+            total_amount_list_2d,
+            marker='o',
+            linestyle='-',
+            markersize=adjusted_line_width * 2, 
+            linewidth=adjusted_line_width)
 
         legend_desc = os.path.basename(log_path.strip('/'))
         for i in range(total_amount_list_2d.shape[1]):
@@ -199,23 +221,26 @@ def plot_data(data_group : list, logarithm):
             all_value_bottom = value_bottom
 
     # Add legend for all plots
-    plt.legend(legend_desc_list, loc='upper left')
+    plt.legend(legend_desc_list, loc='upper left', fontsize=adjusted_font_size * 0.6)
 
     # Set x-axis to yyyy-mm-dd format
     plt.gca().xaxis.set_major_formatter(plt.matplotlib.dates.DateFormatter('%Y-%m-%d'))
     plt.gca().xaxis.set_major_locator(plt.matplotlib.dates.MonthLocator(interval=1))  # Set major ticks to every month
     plt.gca().xaxis.set_minor_locator(plt.matplotlib.dates.DayLocator(interval=1))  # Set minor ticks to every day
     #plt.tight_layout()
-    plt.grid(True)
+    plt.grid(True, which='major', linewidth=adjusted_grid_line_width)
+    for spine in plt.gca().spines.values():
+        spine.set_linewidth(adjusted_grid_line_width)
+
     plt.gcf().autofmt_xdate()  # Rotate date labels for better readability
 
     plt.xticks(rotation=90)
-    plt.title(title)
+    plt.title(title, fontsize=adjusted_font_size)
 
-    plt.xlabel('Date')
+    plt.xlabel('Date', fontsize=adjusted_font_size)
 
     if logarithm:
-        plt.ylabel(f'Log {log_base} of Total Amount')
+        plt.ylabel(f'Log {log_base} of Total Amount', fontsize=adjusted_font_size)
 
         # make all_value_bottom multiples of 5.0
         all_value_bottom = np.floor(all_value_bottom / 5.0) * 5.0
@@ -233,7 +258,7 @@ def plot_data(data_group : list, logarithm):
         plt.gca().yaxis.set_minor_locator(plt.matplotlib.ticker.AutoMinorLocator())
         
     else:
-        plt.ylabel('Total Amount')
+        plt.ylabel('Total Amount', fontsize=adjusted_font_size)
 
         # make all_value_bottom multiples of 0.05
         all_value_bottom = np.floor(all_value_bottom / 0.05) * 0.05
@@ -249,9 +274,11 @@ def plot_data(data_group : list, logarithm):
                    [f'{i:.2f}' for i in np.arange(all_value_bottom, all_value_top, 0.05)])
         # Set minor y ticks
         plt.gca().yaxis.set_minor_locator(plt.matplotlib.ticker.AutoMinorLocator())
+
+    plt.tick_params(labelsize=adjusted_font_size * 0.6, width=adjusted_grid_line_width)
     
     # draw grid for minor ticks
-    plt.grid(which='minor', linestyle=':', linewidth='0.5', color='gray')
+    plt.grid(which='minor', linewidth=adjusted_grid_line_width * 0.5, linestyle=':')
 
     plt.show()
 

@@ -36,8 +36,6 @@ def ensemble_dynamic_simulation(args, config):
             raise ValueError(f"Last history date {args.last_history_date} not in the trade dates of the dataset.")
         last_history_index = all_trade_dates_indices[args.last_history_date]
         num_future_days = len(all_trade_dates) - last_history_index - 1
-        if num_future_days <= 0:
-            raise ValueError(f"Last history date {args.last_history_date} is the last trade date in the dataset. No future days to test.")
         print_log(f"Setting number of future days to {num_future_days} based on last history date {args.last_history_date}.", level='INFO')
         config["inference"]["last_history_date"] = args.last_history_date
 
@@ -90,7 +88,7 @@ def ensemble_dynamic_simulation(args, config):
         for i, trade_date in enumerate(dates_for_test):
             trade_date_obj = datetime.datetime.strptime(trade_date, '%Y-%m-%d')
             weekday = trade_date_obj.weekday()
-            if weekday == ensemble_update_weekday:
+            if i == 0 or weekday == ensemble_update_weekday:
                 last_future_date_l, ensemble_paths = \
                     search_ensemble_by_logs(
                         args.model_pool_log_dir,
@@ -387,9 +385,8 @@ if __name__ == '__main__':
             torch.cuda.manual_seed_all(seed)
     else:
         print("Using variable random seed for each run.")
-        # Set a random seed based on current time
-        seed_base = int(datetime.datetime.now().timestamp() * 1000) % 2**32 # to ensure it fits in 32 bits
-        random.seed(seed_base)
+        # Set a random seed based on os.urandom
+        random.seed(int.from_bytes(os.urandom(8), 'big'))
 
         seed = random.randint(0, 2**32 - 1)
         np.random.seed(seed)

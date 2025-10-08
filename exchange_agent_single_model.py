@@ -194,9 +194,8 @@ if __name__ == '__main__':
             torch.cuda.manual_seed_all(seed)
     else:
         print("Using variable random seed for each run.")
-        # Set a random seed based on current time
-        seed_base = int(datetime.datetime.now().timestamp() * 1000) % 2**32 # to ensure it fits in 32 bits
-        random.seed(seed_base)
+        # Set a random seed based on os.urandom
+        random.seed(int.from_bytes(os.urandom(8), 'big'))
 
         seed = random.randint(0, 2**32 - 1)
         np.random.seed(seed)

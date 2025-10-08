@@ -225,7 +225,7 @@ if __name__ == '__main__':
             '-td', '--last_history_date',
             type=str,
             help='last history date for test',
-            default='2025-03-28'
+            default=''
         )
     
     # top percentage
@@ -256,8 +256,8 @@ if __name__ == '__main__':
         config["inference"]["top_percentage"] = args.top_percentage
     if args.max_ensemble_size > 0:
         config["inference"]["max_ensemble_size"] = args.max_ensemble_size
-
-    config["inference"]["last_history_date"] = args.last_history_date
+    if args.last_history_date != '':
+        config["inference"]["last_history_date"] = args.last_history_date
 
     # If searching by logs, we can use the existing logs to find the best model
     print_log("Searching for the best model by existing logs...", level='INFO')
@@ -269,4 +269,4 @@ if __name__ == '__main__':
             top_percentage = config["inference"]["top_percentage"],
             num_to_select= config["inference"]["max_ensemble_size"])
 
-    print_log(f"Last history date: {args.last_history_date}, Last future date: {last_future_date}", level='INFO')
+    print_log(f"Last history date: {config['inference']['last_history_date']}, Last future date: {last_future_date}", level='INFO')

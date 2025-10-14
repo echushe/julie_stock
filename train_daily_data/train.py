@@ -29,20 +29,18 @@ def constant_seed(seed):
 
 def variable_seed():
     print_log("Using variable random seed for each run.", level='INFO')
-    # Set a random seed based on os.urandom
-    random.seed(int.from_bytes(os.urandom(8), 'big'))
-
-    seed = random.randint(0, 2**32 - 1)
-    np.random.seed(seed)
-
-    seed = random.randint(0, 2**32 - 1)
-    torch.manual_seed(seed)
+    # Use a random seed based on OS entropy source
+    random.seed(int.from_bytes(os.urandom(4), 'big'))
+    # Set seed for NumPy
+    np.random.seed(int.from_bytes(os.urandom(4), 'big'))
+    # Set seed for PyTorch
+    torch.manual_seed(int.from_bytes(os.urandom(4), 'big'))
 
     if torch.cuda.is_available():
-        seed = random.randint(0, 2**32 - 1)
-        torch.cuda.manual_seed(seed)
-        seed = random.randint(0, 2**32 - 1)
-        torch.cuda.manual_seed_all(seed)
+        # Set seed for CUDA (if available)
+        torch.cuda.manual_seed(int.from_bytes(os.urandom(4), 'big'))
+        # Set seed for all GPUs (if available)
+        torch.cuda.manual_seed_all(int.from_bytes(os.urandom(4), 'big'))
 
 
 def training_process_main(trainer : ClsTrainer | RegTrainer, use_constant_seed, num_models, process_id, gpu_id):

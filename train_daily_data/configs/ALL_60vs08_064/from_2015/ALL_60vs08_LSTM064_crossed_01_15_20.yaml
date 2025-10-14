@@ -4,9 +4,9 @@
 dataset:
   market: "ashare"                # Market type (ashare, nasdaq, etc.)
   exchange_cd: ""               # Exchange code (e.g., XSHG for Shanghai Stock Exchange)
-  stock_root_dir: "datayes_data_sample/ashare_daily_stock_order_by_dates"  # Path to input datase
+  stock_root_dir: "datayes_data_sample/ashare_daily_stock_order_by_dates"  # Path to input dataset
   stock_tickers: []                 # List of stock tickers
-  stock_tickers_to_exclude: ['9']     # List of stock tickers to exclude
+  stock_tickers_to_exclude: ['90', '2']     # List of stock tickers to exclude
   index_root_dir: "datayes_data_sample/ashare_daily_index_order_by_dates"  # Path to index dataset
   index_tickers: ['000001', '000300', '399001', '399300'] #['000016', '000300', '000905', '000010'] 
                 #['399001', '399006', '399330', '399005', '399300']  # List of index tickers
@@ -33,9 +33,9 @@ model:
 # Training hyperparameters
 training:
   epochs: 12                         # Number of training epochs
-  min_learning_rate: 0.00001                # Minimum learning rate
-  max_learning_rate: 0.00004                # Maximum learning rate
-  batch_size: 4096                   # Batch size for training
+  min_learning_rate: 0.000001                # Minimum learning rate
+  max_learning_rate: 0.00001                # Maximum learning rate
+  batch_size: 1600                   # Batch size for training
   dataloader_workers: 0             # Number of workers for data loading
   warmup_epochs: 10                  # Number of warmup epochs for learning
   step_size: 1                   # Number of steps before learning rate decay
@@ -44,7 +44,7 @@ training:
   random_learning_rate: false          # Whether to use random learning rate
 
 validation:
-  batch_size: 4096                    # Batch size for testing
+  batch_size: 1600                    # Batch size for testing
   dataloader_workers: 0              # Number of workers for data loading
 
 # Data preprocessing
@@ -60,7 +60,7 @@ preprocessing:
 
 # Output settings
 output:
-  model_checkpoint_dir: "train_daily_data/checkpoints/ALL_60vs08_064/from_2015/01/"  # Path to save trained model
+  model_checkpoint_dir: "/home/shengcn/Projects/finance/stock_checkpoints/ALL_60vs08_064/from_2015/01/"  # Path to save trained model
   save_frequency: 1                        # Save model every N epochs
 
 # Device settings
@@ -71,5 +71,5 @@ device:
 # Logging and monitoring
 logging:
   logging_level: "info"                # Logging level (debug, info, warning, error, critical)
-  log_dir: "train_daily_data/logs/ALL_60vs08_064/from_2015/01/"  # Path to save log file
+  log_dir: "/home/shengcn/Projects/finance/stock_training_logs/ALL_60vs08_064/from_2015/01/"  # Path to save log file
 

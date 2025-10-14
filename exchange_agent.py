@@ -1,5 +1,6 @@
 from train_daily_data.infer_dataset import InferDataset
 from train_daily_data.model_cluster import ModelCluster
+from train_daily_data.BEI_code_mapping import BEICodeMapping
 from exchange_agent_lb import *
 from train_daily_data.global_logger import print_log, resume_logger
 from decimal import Decimal, ROUND_HALF_UP, getcontext
@@ -89,6 +90,8 @@ class StockExchangeAgent:
 
     def resume_from_log(self, log_file_path, last_history_date=None):
 
+        bei_code_mapping = BEICodeMapping()
+
         if not os.path.exists(log_file_path):
             print_log(f"Log file {log_file_path} does not exist. Cannot resume agent state.", level='ERROR')
             return
@@ -140,6 +143,7 @@ class StockExchangeAgent:
                     continue
                 ticker = parts[0].strip()
                 volume = int(parts[-3].strip())
+                ticker = bei_code_mapping.get_new_code(ticker)
                 stock_volumes[ticker] = volume
             else:
                 continue
@@ -156,6 +160,7 @@ class StockExchangeAgent:
 
             if len(parts) >= 2:
                 ticker = parts[0].strip()
+                ticker = bei_code_mapping.get_new_code(ticker)
                 tickers_to_sell.append(ticker)     
             else:
                 continue
@@ -168,6 +173,7 @@ class StockExchangeAgent:
                 if not parts[-1].isdigit():
                     continue
                 ticker = parts[0].strip()
+                ticker = bei_code_mapping.get_new_code(ticker)
                 volume = int(parts[-1].strip())
                 tickers_to_buy_volumes.append((ticker, volume))
             else:

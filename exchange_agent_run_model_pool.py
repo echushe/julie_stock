@@ -170,7 +170,7 @@ def stock_exchange_agent_run_model_pool(args, config):
     now_as_str = now.strftime('%Y-%m-%d_%H-%M-%S')
     now_as_str_date = now.strftime('%Y-%m-%d')
 
-    log_name = config_file_name + f'_run_model_pool_{now_as_str_date}/' + now_as_str
+    log_name = config_file_name + f'_run_model_pool_{now_as_str}/' + now_as_str
 
     configure_logger(log_name, config, log_to_file=True)
     print_log(json.dumps(config, indent=4), level='INFO')
@@ -363,19 +363,17 @@ if __name__ == '__main__':
             torch.cuda.manual_seed_all(seed)
     else:
         print("Using variable random seed for each run.")
-        # Set a random seed based on os.urandom
-        random.seed(int.from_bytes(os.urandom(8), 'big'))
-
-        seed = random.randint(0, 2**32 - 1)
-        np.random.seed(seed)
-
-        seed = random.randint(0, 2**32 - 1)
-        torch.manual_seed(seed)
+        # Use a random seed based on OS entropy source
+        random.seed(int.from_bytes(os.urandom(4), 'big'))
+        # Set seed for NumPy
+        np.random.seed(int.from_bytes(os.urandom(4), 'big'))
+        # Set seed for PyTorch
+        torch.manual_seed(int.from_bytes(os.urandom(4), 'big'))
 
         if torch.cuda.is_available():
-            seed = random.randint(0, 2**32 - 1)
-            torch.cuda.manual_seed(seed)
-            seed = random.randint(0, 2**32 - 1)
-            torch.cuda.manual_seed_all(seed)
+            # Set seed for CUDA (if available)
+            torch.cuda.manual_seed(int.from_bytes(os.urandom(4), 'big'))
+            # Set seed for all GPUs (if available)
+            torch.cuda.manual_seed_all(int.from_bytes(os.urandom(4), 'big'))
 
     stock_exchange_agent_run_model_pool(args, config)

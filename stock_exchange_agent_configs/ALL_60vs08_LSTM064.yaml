@@ -4,10 +4,10 @@
 dataset:
   market: "ashare"                # Market type (ashare, nasdaq, etc.)
   exchange_cd: ""               # Exchange code (e.g., XSHG for Shanghai Stock Exchange)
-  stock_root_dir: "/home/shengcn/extra_disk_2t/finance/ashare_daily_stock_order_by_dates"  # Path to input datase
+  stock_root_dir: "datayes_data_sample/ashare_daily_stock_order_by_dates"  # Path to input dataset
   stock_tickers: []                 # List of stock tickers
-  stock_tickers_to_exclude: ['9']     # List of stock tickers to exclude
-  index_root_dir: "/home/shengcn/extra_disk_2t/finance/ashare_daily_index_order_by_dates"  # Path to index dataset
+  stock_tickers_to_exclude: ['90', '2']     # List of stock tickers to exclude
+  index_root_dir: "datayes_data_sample/ashare_daily_index_order_by_dates"  # Path to index dataset
   index_tickers: ['000001', '000300', '399001', '399300'] #['000016', '000300', '000905', '000010'] 
                 #['399001', '399006', '399330', '399005', '399300']  # List of index tickers
   sequence_length: 60                # Length of input sequences
@@ -21,7 +21,7 @@ dataset:
     start_date: "2024-01-01"         # Start date for testing data
     end_date: "2099-12-31"           # End date for testing data
   final_testing:
-    start_date: "2025-01-01"         # Start date for final testing data
+    start_date: "2025-05-31"         # Start date for final testing data
     end_date: "2099-12-31"           # End date for final testing data
 
 # Model architecture
@@ -36,7 +36,7 @@ model:
 
 inference:
   voting: false                    # Whether to use voting for predictions
-  batch_size: 2688           # Batch size for inference
+  batch_size: 1600           # Batch size for inference
   top_percentage: 0.06                # Top percentage for selecting checkpoints from golden model search
   last_history_date: '2025-01-02'
   ensemble_update_weekday: 4         # Weekday to update ensemble models (0=Monday, 1=Tuesday, ..., 6=Sunday)

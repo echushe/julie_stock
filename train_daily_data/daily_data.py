@@ -9,6 +9,8 @@ from typing import Union
 from train_daily_data.utils import milliseconds_to_datetime, milliseconds_to_date, date_to_milliseconds, next_date_of_date
 from train_daily_data.global_logger import print_log
 
+from train_daily_data.BEI_code_mapping import BEICodeMapping
+
 ASHARE_STOCK = 0
 NASDAQ_STOCK = 1
 ASHARE_INDEX = 2
@@ -430,6 +432,7 @@ class StockData:
                     self.__load_klines_from_json(klines_as_dict_date_as_key, market, root_dir, json_file, start_date, end_date)
         elif market in {'ashare', 'hk'}:
             self.__load_klines_from_ashare_stock_order_by_dates(klines_as_dict_date_as_key, names_ticker_as_key, root_dir, start_date, end_date, tickers, tickers_to_exclude)
+            klines_as_dict_date_as_key = self.__map_old_BEI_code_to_new_code(klines_as_dict_date_as_key)
 
         # Interpolate missing data
         self.stock_data_preprocessor = StockDataPreprocessor(
@@ -660,6 +663,26 @@ class StockData:
                 klines_as_dict_date_as_key[trade_date] = {ticker : unified_kline_item}
             else:
                 klines_as_dict_date_as_key[trade_date][ticker] = unified_kline_item
+
+
+    def __map_old_BEI_code_to_new_code(self, klines_as_dict_date_as_key):
+        # Create a BEICodeMapping instance
+        bei_code_mapping = BEICodeMapping()
+
+        # Create a new dictionary to store the updated klines
+        updated_klines_as_dict_date_as_key = dict()
+
+        for trade_date, tickers in klines_as_dict_date_as_key.items():
+            updated_tickers = dict()
+            for ticker, kline_item in tickers.items():
+                new_ticker = bei_code_mapping.get_new_code(ticker)
+                if new_ticker != ticker:
+                    print_log(f"Mapping old BEI code {ticker} to new code {new_ticker}", level='DEBUG')
+                updated_tickers[new_ticker] = kline_item
+            updated_klines_as_dict_date_as_key[trade_date] = updated_tickers
+
+        # Replace the old klines with the updated klines
+        return updated_klines_as_dict_date_as_key
 
 
     def __go_through_klines_for_debug(self, index_ticker):

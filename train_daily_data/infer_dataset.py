@@ -317,24 +317,24 @@ class InferDataset():
         # Get the name of the stock via ticker
         if trade_date is None:
             if ticker not in self.stock_data.names_ticker_as_key:
-                return 'unkown'
+                return 'unknown'
             return self.stock_data.names_ticker_as_key[ticker]
         else:
             if trade_date not in self.stock_data.klines_as_dict_date_as_key:
                 if ticker not in self.stock_data.names_ticker_as_key:
-                    return 'unkown'
+                    return 'unknown'
                 return self.stock_data.names_ticker_as_key[ticker]
             else:
                 klines_ticker_as_key = self.stock_data.klines_as_dict_date_as_key[trade_date]
                 if ticker not in klines_ticker_as_key:
                     if ticker not in self.stock_data.names_ticker_as_key:
-                        return 'unkown'
+                        return 'unknown'
                     return self.stock_data.names_ticker_as_key[ticker]
                 else:
                     kline_item = klines_ticker_as_key[ticker]
                     if 'tickerName' not in kline_item:
                         if ticker not in self.stock_data.names_ticker_as_key:
-                            return 'unkown'
+                            return 'unknown'
                         return self.stock_data.names_ticker_as_key[ticker]
                     else:
                         return kline_item['tickerName']

@@ -83,6 +83,55 @@ def sort_metric(a, b, metric_name='sum'):
         raise ValueError(f'Unknown sort metric: {metric_name}. Available metrics: sum_with_penalty, sum, sum_with_balance_1, multiply, harmonic_mean.')
 
 
+def early_stop(checkpoint_dir, config):
+
+    patience_epochs = config['training']['patience_epochs']
+    performance_metric = config['training']['performance_metric']
+
+    # get all model files in the checkpoint directory
+    model_files = [f for f in os.listdir(checkpoint_dir) if f.endswith('.pth')]
+    if len(model_files) == 0:
+        print_log(f'No model files found in {checkpoint_dir}', level='WARNING')
+        return False
+    
+    # file name example:
+    # model_003_acc_0.3447_0.1852_neg_0.1157_0.5251_pos_0.6185_0.5153_bonus_+0.023972_+0.006722.pth
+    
+    # pickup epoch numbers and bonus values from model file names
+    epoch_performance_pairs = []
+    for model_file in model_files:
+        model_file_without_ext = model_file.strip('.pth')
+        model_file_split = model_file_without_ext.split('_')
+        epoch = int(model_file_split[1])
+        if model_file_split[-3] == 'bonus':
+            bonus_1 = float(model_file_split[-2])
+            bonus_2 = float(model_file_split[-1])
+            performance = sort_metric(bonus_1, bonus_2, metric_name=performance_metric)
+        elif model_file_split[-2] == 'bonus':
+            performance= float(model_file_split[-1])
+
+        epoch_performance_pairs.append((epoch, performance))
+
+    # get epoch number of the highest performance
+    epoch_performance_pairs.sort(key=lambda x: x[0])  # sort by epoch
+    best_epoch = -1
+    best_performance = -float('inf')
+    for epoch, performance in epoch_performance_pairs:
+        if performance > best_performance:
+            best_performance = performance
+            best_epoch = epoch
+
+    # subtract the best epoch from the last epoch
+    last_epoch = epoch_performance_pairs[-1][0]
+    epochs_since_best = last_epoch - best_epoch
+
+    if epochs_since_best >= patience_epochs:
+        print_log(f'Early stopping triggered. Best epoch: {best_epoch}, Last epoch: {last_epoch}, Epochs since best: {epochs_since_best}', level='INFO')
+        return True
+
+    return False
+
+
 def get_model_paths_via_checkpoint_dir(checkpoint_dir, config):
 
     # model file format: 
@@ -211,6 +260,15 @@ def resolve_gpu_plan(n_models, config):
         gpu_plan[gpu_id] = math.ceil(float_value)
 
     return list(gpu_plan.items())
+
+
+def get_all_model_paths_via_checkpoint_dirs(checkpoint_dirs, config):
+
+    all_model_paths = []
+    for checkpoint_dir in checkpoint_dirs:
+        all_model_paths.extend(get_model_paths_via_checkpoint_dir(checkpoint_dir, config=config))
+
+    return all_model_paths
 
 
 def get_models_via_checkpoint_dirs(checkpoint_dirs, config, cpu_mode=False):

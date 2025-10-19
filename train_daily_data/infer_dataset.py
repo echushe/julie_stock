@@ -57,6 +57,9 @@ class InferDataset():
 
         self.__fix_trade_dates(self.index_data, self.stock_data)
 
+        # All index tickers
+        self.index_tickers = sorted(list(self.index_data.klines_as_dict_ticker_as_key.keys()))
+
         self.index_samples_date_as_key = self.__generate_index_samples(
             self.index_data,
             input_t_len=input_t_len)
@@ -139,12 +142,18 @@ class InferDataset():
                     index_input_data.append(kline_item_as_np_array)
 
                 index_input_data = np.array(index_input_data, dtype=np.float32)
-                
+
+                sample = [
+                        index_ticker, # ticker id
+                        trade_dates_sorted[idx + input_t_len - 1], # trade date
+                        index_input_data, # index input data
+                    ]
+
                 # Date of this sample is the last date of the input data
                 last_date_of_index_input_data = trade_dates_sorted[idx + input_t_len -1]
                 if last_date_of_index_input_data not in index_samples_date_as_key:
                     index_samples_date_as_key[last_date_of_index_input_data] = dict()               
-                index_samples_date_as_key[last_date_of_index_input_data][index_ticker] = index_input_data
+                index_samples_date_as_key[last_date_of_index_input_data][index_ticker] = sample
 
 
         return index_samples_date_as_key
@@ -236,12 +245,12 @@ class InferDataset():
                 stock_input_data = self.__fix_stock_sample_due_to_XD_XR_DR_R_etc(
                     ticker, trade_dates_sorted, kline_date_as_key, idx, stock_input_data)              
 
-                sample = {
-                        'ticker': ticker,
-                        'trade_date': trade_dates_sorted[idx + input_t_len - 1],
-                        'stock_input': stock_input_data,
-                    }
-                
+                sample = [
+                        ticker, # ticker id
+                        trade_dates_sorted[idx + input_t_len - 1], # trade date
+                        stock_input_data, # stock input data
+                    ]
+
                 # Date of this sample is the last date of the input data
                 last_date_of_stock_input_data = trade_dates_sorted[idx + input_t_len -1]
                 if last_date_of_stock_input_data not in stock_samples_date_as_key:
@@ -287,25 +296,25 @@ class InferDataset():
     def __indices_sample_via_stock_sample(self, stock_sample):
         # Combine the index input sample and stock input sample
 
-        # All index tickers
-        index_tickers = sorted(list(self.index_data.klines_as_dict_ticker_as_key.keys()))
-        trade_date = stock_sample['trade_date']
+        trade_date = stock_sample[1]
         
         # Check if the trade date is in the index samples
         # If not, return a zero array
         if trade_date not in self.index_samples_date_as_key:
             print_log(f"Trade date {trade_date} does not support any index tickers needed.", level='DEBUG')
-            return np.zeros((stock_sample['stock_input'].shape[0], len(index_tickers) * 5), dtype=np.float32)
+            return np.zeros((stock_sample[2].shape[0], len(self.index_tickers) * 5), dtype=np.float32)
+        
+        index_ticker_kline_data_of_this_date = self.index_samples_date_as_key[trade_date]
 
         indices_input_data = []
-        for index_ticker in index_tickers:
+        for index_ticker in self.index_tickers:
 
-            if index_ticker not in self.index_samples_date_as_key[trade_date]:
+            if index_ticker not in index_ticker_kline_data_of_this_date:
                 # If this index ticker is not in the index samples, return a zero array
                 print_log(f"Trade date {trade_date} does not support index ticker {index_ticker}.", level='DEBUG')
-                index_input_data = np.zeros((stock_sample['stock_input'].shape[0], 5), dtype=np.float32)
+                index_input_data = np.zeros((stock_sample[2].shape[0], 5), dtype=np.float32)
             else:
-                index_input_data = self.index_samples_date_as_key[trade_date][index_ticker]
+                index_input_data = index_ticker_kline_data_of_this_date[index_ticker][2]
             indices_input_data.append(index_input_data)
         
         indices_input_data = np.concatenate(indices_input_data, axis=1)
@@ -348,7 +357,7 @@ class InferDataset():
         stock_sample = self.stock_samples_date_as_key[date][ticker]
 
         indices_input_array = self.__indices_sample_via_stock_sample(stock_sample)
-        stock_input_array = stock_sample['stock_input']
+        stock_input_array = stock_sample[2]
 
         return indices_input_array, stock_input_array
     
@@ -361,7 +370,7 @@ class InferDataset():
         original_samples_ticker_as_key = dict()
         for ticker, stock_sample in stock_samples.items():
             indices_input_array = self.__indices_sample_via_stock_sample(stock_sample)
-            stock_input_array = stock_sample['stock_input']
+            stock_input_array = stock_sample[2]
 
             original_sample = (indices_input_array, stock_input_array)
             original_samples_ticker_as_key[ticker] = original_sample
@@ -394,7 +403,7 @@ def test_case(differenced=False):
     index_root_dir = 'datayes_data_sample/ashare_daily_index_order_by_dates'
     market = 'ashare'
     start_date = '2025-01-01'
-    end_date = '2025-06-11'
+    end_date = '2099-12-31'
     ticker = None
 
     dataset = InferDataset(
@@ -403,7 +412,6 @@ def test_case(differenced=False):
         exchange_cd='XSHE',
         stock_tickers=None,
         index_tickers=['399001',],
-        max_tradedate_gap=0,
         input_t_len=20)
     
     print(f"len of data: {len(dataset)}")
@@ -420,7 +428,7 @@ def test_case(differenced=False):
 if __name__ == "__main__":
 
     configure_logger(
-        log_file_name='none',
+        log_name='none',
         config = {
             'logging': {
                 'logging_level': 'DEBUG',

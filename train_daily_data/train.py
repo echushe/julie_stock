@@ -43,17 +43,18 @@ def variable_seed():
         torch.cuda.manual_seed_all(int.from_bytes(os.urandom(4), 'big'))
 
 
-def training_process_main(trainer : ClsTrainer | RegTrainer, use_constant_seed, num_models, process_id, gpu_id):
+def training_process_main(trainer : ClsTrainer | RegTrainer, use_constant_seed, num_models, process_id, gpu_id, log_name):
 
     # Set GPU id for the trainer
     trainer.config['device']['gpu_id'] = gpu_id
 
     for i in range(num_models):
 
+        configure_logger(log_name + f'_process_{process_id}', trainer.config)
+
         if not use_constant_seed:
             variable_seed()
 
-        configure_logger(log_name + f'_process_{process_id}', trainer.config)
         print_log(f'################## Process {process_id} GPU:{gpu_id} #### Start training model {i + 1} ##################', level='INFO')
         
         # Train the model
@@ -126,11 +127,12 @@ if __name__ == '__main__':
     num_processes = len(gpu_ids)
     if num_processes > 1:
         # Use multiprocessing
+        multiprocessing.set_start_method('spawn')
         processes = []
         for i in range(num_processes):
             p = multiprocessing.Process(
                 target=training_process_main,
-                args=(trainer, args.use_constant_seed, args.num_models, i, gpu_ids[i]))
+                args=(trainer, args.use_constant_seed, args.num_models, i, gpu_ids[i], log_name))
             processes.append(p)
             p.start()
 

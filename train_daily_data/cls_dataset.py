@@ -65,6 +65,9 @@ class ClsDataset(Dataset):
 
         self.__fix_trade_dates(self.index_data, self.stock_data)
 
+        # All index tickers
+        self.index_tickers = sorted(list(self.index_data.klines_as_dict_ticker_as_key.keys()))
+
         #self.multiprocessing_manager = multiprocessing.Manager()
 
         self.index_samples_date_as_key = self.__generate_index_samples(
@@ -87,10 +90,6 @@ class ClsDataset(Dataset):
             self.cls_rule.cls_threshold_list = cls_threshold_list
         else:
             self.cls_rule = EarningRateCLSRule(cls_threshold_list=cls_rule)
-
-        # Transform list and dict into managed list and dict
-        #self.stock_samples = self.multiprocessing_manager.list(self.stock_samples)
-        #self.stock_samples_date_as_key = self.multiprocessing_manager.dict(self.stock_samples_date_as_key)
 
 
     def __fix_trade_dates(self, index_data, stock_data):
@@ -165,12 +164,18 @@ class ClsDataset(Dataset):
                     index_input_data.append(kline_item_as_np_array)
 
                 index_input_data = np.array(index_input_data, dtype=np.float32)
+
+                sample = [
+                        index_ticker, # ticker id
+                        trade_dates_sorted[idx + input_t_len - 1], # trade date
+                        index_input_data, # index input
+                    ]
                 
                 # Date of this sample is the last date of the input data
                 last_date_of_index_input_data = trade_dates_sorted[idx + input_t_len -1]
                 if last_date_of_index_input_data not in index_samples_date_as_key:
                     index_samples_date_as_key[last_date_of_index_input_data] = dict()               
-                index_samples_date_as_key[last_date_of_index_input_data][index_ticker] = index_input_data
+                index_samples_date_as_key[last_date_of_index_input_data][index_ticker] = sample
 
 
         return index_samples_date_as_key
@@ -244,12 +249,12 @@ class ClsDataset(Dataset):
                 index_input_data = np.array(index_input_data, dtype=np.float32)
                 index_target_data = np.array(index_target_data, dtype=np.float32)
 
-                sample = {
-                        'ticker': index_ticker,
-                        'trade_date': trade_dates_sorted[idx + input_t_len - 1],
-                        'index_input': index_input_data,
-                        'index_target': index_target_data,
-                    }
+                sample = [
+                        index_ticker, # ticker id
+                        trade_dates_sorted[idx + input_t_len - 1], # trade date
+                        index_input_data, # index input
+                        index_target_data, # index target
+                    ]
 
                 # Date of this sample is the last date of the input data
                 last_date_of_index_input_data = trade_dates_sorted[idx + input_t_len -1]
@@ -371,12 +376,12 @@ class ClsDataset(Dataset):
                     self.__fix_stock_sample_due_to_XD_XR_DR_R_etc(
                         ticker, trade_dates_sorted, kline_date_as_key, idx, stock_input_data, stock_target_data)
 
-                sample = {
-                        'ticker': ticker,
-                        'trade_date': trade_dates_sorted[idx + input_t_len - 1],
-                        'stock_input': stock_input_data,
-                        'stock_target': stock_target_data,
-                    }
+                sample = [
+                        ticker, # ticker id
+                        trade_dates_sorted[idx + input_t_len - 1], # trade date
+                        stock_input_data, # stock input
+                        stock_target_data, # stock target
+                    ]
 
                 # Check if the indices sample is available for this stock sample
                 if not self.__indices_sample_available_for_stock_sample(sample):
@@ -447,9 +452,9 @@ class ClsDataset(Dataset):
 
   
     def __indices_sample_available_for_stock_sample(self, stock_sample):
-        # All index tickers
-        index_tickers = sorted(list(self.index_data.klines_as_dict_ticker_as_key.keys()))
-        trade_date = stock_sample['trade_date']
+        # Check if the indices sample is available for the given stock sample
+
+        trade_date = stock_sample[1]
         
         # Check if the trade date is in the index samples
         # If not, return a zero array
@@ -458,9 +463,11 @@ class ClsDataset(Dataset):
             #self.__go_through_index_klines_for_debug(trade_date, index_tickers[0])
             return False
 
-        for index_ticker in index_tickers:
+        index_ticker_kline_data_of_this_date = self.index_samples_date_as_key[trade_date]
 
-            if index_ticker not in self.index_samples_date_as_key[trade_date]:
+        for index_ticker in self.index_tickers:
+
+            if index_ticker not in index_ticker_kline_data_of_this_date:
                 # If this index ticker is not in the index samples, return a zero array
                 print_log(f"Trade date {trade_date} does not support a sample of index ticker {index_ticker}.", level='INFO')
                 #self.__go_through_index_klines_for_debug(trade_date, index_ticker)
@@ -472,29 +479,30 @@ class ClsDataset(Dataset):
     def __indices_sample_via_stock_sample(self, stock_sample):
         # Combine the index input sample and stock input sample
 
-        # All index tickers
-        index_tickers = sorted(list(self.index_data.klines_as_dict_ticker_as_key.keys()))
-        trade_date = stock_sample['trade_date']
+        trade_date = stock_sample[1]
         
         # Check if the trade date is in the index samples
         # If not, return a zero array
         if trade_date not in self.index_samples_date_as_key:
             print_log(f"Trade date {trade_date} does not support samples of any index tickers.", level='WARNING')
             #self.__go_through_index_klines_for_debug(trade_date, index_tickers[0])
-            return np.zeros((stock_sample['stock_input'].shape[0], len(index_tickers) * 5), dtype=np.float32)
+            return np.zeros((stock_sample[2].shape[0], len(self.index_tickers) * 5), dtype=np.float32)
+
+        index_ticker_kline_data_of_this_date = self.index_samples_date_as_key[trade_date]
 
         indices_input_data = []
         indices_target_data = []
-        for index_ticker in index_tickers:
+        for index_ticker in self.index_tickers:
 
-            if index_ticker not in self.index_samples_date_as_key[trade_date]:
+            if index_ticker not in index_ticker_kline_data_of_this_date:
                 # If this index ticker is not in the index samples, return a zero array
                 print_log(f"Trade date {trade_date} does not support a sample of index ticker {index_ticker}.", level='WARNING')
                 #self.__go_through_index_klines_for_debug(trade_date, index_ticker)
-                index_input_data = np.zeros((stock_sample['stock_input'].shape[0], 5), dtype=np.float32)
+                index_input_data = np.zeros((stock_sample[2].shape[0], 5), dtype=np.float32)
             else:
-                index_input_data = self.index_samples_date_as_key[trade_date][index_ticker]['index_input']
-                index_target_data = self.index_samples_date_as_key[trade_date][index_ticker]['index_target']
+                index_sample = index_ticker_kline_data_of_this_date[index_ticker]
+                index_input_data = index_sample[2]
+                index_target_data = index_sample[3]
             indices_input_data.append(index_input_data)
             indices_target_data.append(index_target_data)
         
@@ -536,8 +544,8 @@ class ClsDataset(Dataset):
         stock_sample = self.stock_samples[idx]
 
         indices_input_array, indices_target_array = self.__indices_sample_via_stock_sample(stock_sample)
-        stock_input_array = stock_sample['stock_input']
-        stock_target_array = stock_sample['stock_target']
+        stock_input_array = stock_sample[2]
+        stock_target_array = stock_sample[3]
 
         return indices_input_array, indices_target_array, stock_input_array, stock_target_array
     
@@ -550,8 +558,8 @@ class ClsDataset(Dataset):
         stock_sample = self.stock_samples_date_as_key[date][ticker]
 
         indices_input_array, indices_target_array = self.__indices_sample_via_stock_sample(stock_sample)
-        stock_input_array = stock_sample['stock_input']
-        stock_target_array = stock_sample['stock_target']
+        stock_input_array = stock_sample[2]
+        stock_target_array = stock_sample[3]
 
         return indices_input_array, indices_target_array, stock_input_array, stock_target_array
     
@@ -564,8 +572,8 @@ class ClsDataset(Dataset):
         original_samples_ticker_as_key = dict()
         for ticker, stock_sample in stock_samples.items():
             indices_input_array, indices_target_array = self.__indices_sample_via_stock_sample(stock_sample)
-            stock_input_array = stock_sample['stock_input']
-            stock_target_array = stock_sample['stock_target']
+            stock_input_array = stock_sample[2]
+            stock_target_array = stock_sample[3]
 
             original_sample = (indices_input_array, indices_target_array, stock_input_array, stock_target_array)
             original_samples_ticker_as_key[ticker] = original_sample
@@ -986,7 +994,7 @@ if __name__ == "__main__":
     # arg parse
     import argparse
     parser = argparse.ArgumentParser(description='Test ClsDataset')
-    parser.add_argument('--first_date', type=str, default='1990-01-01', help='First date of the dataset')
+    parser.add_argument('--first_date', type=str, default='2020-01-01', help='First date of the dataset')
     parser.add_argument('--last_date', type=str, default='2099-12-31', help='Last date of the dataset')
     args = parser.parse_args()
 

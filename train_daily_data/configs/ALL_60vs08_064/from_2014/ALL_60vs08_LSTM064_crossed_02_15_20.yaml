@@ -32,9 +32,9 @@ model:
 
 # Training hyperparameters
 training:
-  epochs: 12                         # Number of training epochs
-  min_learning_rate: 0.000001                # Minimum learning rate
-  max_learning_rate: 0.00001                # Maximum learning rate
+  epochs: 20                         # Number of training epochs
+  min_learning_rate: 0.00001                # Minimum learning rate
+  max_learning_rate: 0.00004                # Maximum learning rate
   batch_size: 1600                   # Batch size for training
   dataloader_workers: 0             # Number of workers for data loading
   warmup_epochs: 10                  # Number of warmup epochs for learning
@@ -42,6 +42,8 @@ training:
   gamma: 0.9                        # Factor by which the learning rate is reduced
   weight_decay: 0.0001               # L2 regularization term
   random_learning_rate: false          # Whether to use random learning rate
+  patience_epochs: 5                   # Max epochs after best validation performance before early stop
+  performance_metric: "harmonic_mean"   # (sum, sum_with_penalty, sum_with_balance_1, multiply, harmonic_mean)
 
 validation:
   batch_size: 1600                   # Batch size for testing

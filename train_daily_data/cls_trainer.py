@@ -11,7 +11,8 @@ from train_daily_data.cls_dataset import ClsDataset, load_dataset, load_crossed_
 from train_daily_data.utils import print_confusion_matrix
 from train_daily_data.models.lstm_model import *
 from train_daily_data.preprocess_of_batch import TrainBatchPreprocessor
-from train_daily_data.global_logger import configure_logger, print_log
+from train_daily_data.model_selection import early_stop
+from train_daily_data.global_logger import print_log
 
 class ClsTrainer:
 # Assuming you have a dataset class `StockDataset`
@@ -92,7 +93,8 @@ class ClsTrainer:
         total_failures = 0
         total_successes = 0
         
-        cls_confusion_mat = np.zeros((n_classes, n_classes), dtype=int)
+        #cls_confusion_mat = np.zeros((n_classes, n_classes), dtype=int)
+        cls_confusion_mat = torch.zeros((n_classes, n_classes), dtype=torch.int32).to('cuda:{}'.format(gpu_id))
 
         virtual_bonus = 0.0
         virtual_bonus_count = 0
@@ -137,6 +139,9 @@ class ClsTrainer:
                 total_successes += torch.sum(pred == gt)
                 total_failures += torch.sum(pred != gt)
 
+                # The following code is equivalent to the commented out code
+                # The commented out code is more comprehensible but slower
+                '''
                 for j in range(len(pred)):
                     pred_cls = pred[j].item()
                     gt_cls = gt[j].item()
@@ -151,10 +156,20 @@ class ClsTrainer:
                         virtual_bonus_count += 1
                     else:
                         virtual_bonus_count += 1
+                '''
+                # More efficient implementation using tensor operations
+                # Update confusion matrix
+                for c_1 in range(n_classes):
+                    for c_2 in range(n_classes):
+                        cls_confusion_mat[c_1, c_2] += torch.sum((gt == c_1) & (pred == c_2)).item()
+                # Update virtual bonus
+                bonus_signs = (pred > n_classes // 2).float() - (pred < n_classes // 2).float()
+                virtual_bonus += torch.sum(bonus_signs * rate_label).item()
+                virtual_bonus_count += len(pred)
 
 
         print_log('----------------------------------------------------------', level='INFO')
-        precision_of_neg, precision_of_pos = print_confusion_matrix(cls_confusion_mat)
+        precision_of_neg, precision_of_pos = print_confusion_matrix(cls_confusion_mat.cpu().numpy())
         virtual_bonus = virtual_bonus / virtual_bonus_count if virtual_bonus_count > 0 else 0.0
 
         print_log('Precision of negative classes: {:.4f}'.format(precision_of_neg), level='INFO')
@@ -313,6 +328,9 @@ class ClsTrainer:
                         val_1_bonus, val_2_bonus)
                 # Save the model
                 self.save_model(model, save_dir, model_file_name)
+
+                if early_stop(save_dir, self.config):
+                    break
                 
             epoch += 1
             if epoch > num_epochs:

@@ -11,7 +11,8 @@ from train_daily_data.cls_dataset import ClsDataset, load_dataset, load_crossed_
 from train_daily_data.utils import print_confusion_matrix
 from train_daily_data.models.lstm_autoregressive import *
 from train_daily_data.preprocess_of_batch import TrainBatchPreprocessor
-from train_daily_data.global_logger import configure_logger, print_log
+from train_daily_data.model_selection import early_stop
+from train_daily_data.global_logger import print_log
 
 class RegTrainer:
 # Assuming you have a dataset class `StockDataset`
@@ -251,6 +252,9 @@ class RegTrainer:
                         val_1_bonus, val_2_bonus)
                 # Save the model
                 self.save_model(model, save_dir, model_file_name)
+
+                if early_stop(save_dir, self.config):
+                    break
                 
             epoch += 1
             if epoch > num_epochs:

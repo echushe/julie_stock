@@ -197,7 +197,7 @@ def get_model_paths_via_checkpoint_dir(checkpoint_dir, config):
         best_models_dir_as_key[root] = best
         #print_log(f'Best model for time stamp {time_stamp} is {model_path} with validation bonus {best[1][-1]}', level='INFO')
 
-    print_log(f'Found {len(models_dir_as_key)} directories with model files.', level='INFO')
+    print_log(f'Found {len(models_dir_as_key)} directories with model files for {checkpoint_dir}', level='INFO')
 
     # Select top models based on validation bonus
     pairs = list(best_models_dir_as_key.items())
@@ -395,7 +395,7 @@ if __name__ == '__main__':
             '-n', '--n_models_in_each_checkpoint_dir',
             type=int,
             help='number of models in each checkpoint directory',
-            default=1
+            default=-1
     )
     
     parser.add_argument(

@@ -623,7 +623,8 @@ class StockExchangeAgent:
     def step(self):
 
         if self.stock_reservoir.trade_date is None:
-            raise ValueError("Trade date is not set. Please initialize the trade date before calling step().")
+            print_log("Trade date is not set or exceeds the last available trade date.", level='ERROR')
+            return None, self.total_amount_record
 
         self.__buy_and_sell(self.tickers_to_sell, self.tickers_to_buy_volumes)
 

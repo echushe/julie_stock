@@ -1,5 +1,5 @@
 from exchange_agent_ensemble_search import search_ensemble_by_logs
-from train_daily_data.model_selection import get_models_via_paths
+from train_daily_data.model_selection import get_models_via_paths, get_all_model_paths_via_checkpoint_dirs
 from train_daily_data.model_cluster import ModelCluster, REGModelCluster, CLSModelCluster
 from train_daily_data.global_logger import configure_logger, resume_logger, print_log
 from exchange_agent import StockExchangeAgent
@@ -17,14 +17,20 @@ import json
 def ensemble_dynamic_simulation(args, config):
 
     config_file_name = os.path.basename(args.config).replace('.yaml', '')
-    log_name = config_file_name + '_' + datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
+    config['my_name'] = config_file_name
+
+    if args.resume_from_log_dir != '':
+        log_parent_dir = os.path.dirname(args.resume_from_log_dir)
+        config['logging']['log_dir'] = log_parent_dir
+        log_name = os.path.basename(args.resume_from_log_dir)
+    else:
+        log_name = config_file_name + '_' + datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
+
     configure_logger(log_name, config, True)
 
     infer_dataset = load_infer_dataset(config, final_test=args.final_test)
     all_trade_dates = infer_dataset.get_all_trade_dates()
     all_trade_dates_indices = {date: idx for idx, date in enumerate(all_trade_dates)}
-
-    config['my_name'] = config_file_name
 
     if args.gpu_id >= 0:
         config['device']['gpu_id'] = args.gpu_id
@@ -43,13 +49,19 @@ def ensemble_dynamic_simulation(args, config):
         config['inference']['top_percentage'] = args.top_percentage
     if args.max_ensemble_size > 0:
         config['inference']['max_ensemble_size'] = args.max_ensemble_size
-    if args.ensemble_update_weekday >= 0 and args.ensemble_update_weekday <= 6:
+    if args.ensemble_update_weekday >= 0:
         config['inference']['ensemble_update_weekday'] = args.ensemble_update_weekday
     if args.ensemble_update_interval > 0:
         config['inference']['ensemble_update_interval'] = args.ensemble_update_interval
+    if args.daily_return_half_life > 0:
+        config["ensemble_search"]["daily_return_half_life"] = args.daily_return_half_life
     
 
     print_log(json.dumps(config, indent=4), level='INFO')
+
+    # Get all model paths from the checkpoint directories via preconfigured requirements (min bonus, etc.)
+    checkpoint_dirs = config['model_pool']['checkpoint_dirs']
+    model_paths_available = get_all_model_paths_via_checkpoint_dirs(checkpoint_dirs, config)
 
     # index of last history date
     last_history_index = all_trade_dates_indices[config["inference"]["last_history_date"]]
@@ -62,8 +74,7 @@ def ensemble_dynamic_simulation(args, config):
     ensemble_paths_date_as_key = dict()
 
     ensemble_update_weekday = config['inference']['ensemble_update_weekday']
-    if ensemble_update_weekday < -1 or ensemble_update_weekday > 6:
-        raise ValueError("Ensemble update weekday must be between 0 and 6, or -1 if not specified.")
+
     if ensemble_update_weekday in {5, 6}:
         print_log("Warning: Ensemble update weekday is set to weekend (5=Saturday, 6=Sunday). Changing to Friday (4).", level='WARNING')
         ensemble_update_weekday = 4
@@ -72,7 +83,7 @@ def ensemble_dynamic_simulation(args, config):
     if ensemble_update_interval <= 0:
         raise ValueError("Ensemble update interval must be a positive integer.")
 
-    if ensemble_update_weekday < 0:
+    if ensemble_update_weekday < 0 or ensemble_update_weekday > 6:
         for i, trade_date in enumerate(dates_for_test):
             if i % ensemble_update_interval == 0:
                 last_future_date_l, ensemble_paths = \
@@ -82,6 +93,7 @@ def ensemble_dynamic_simulation(args, config):
                         trade_date,
                         config['inference']['top_percentage'],
                         config['inference']['max_ensemble_size'],
+                        model_paths_available=model_paths_available,
                         logging=False)
                 ensemble_paths_date_as_key[trade_date] = ensemble_paths
     else:
@@ -96,6 +108,7 @@ def ensemble_dynamic_simulation(args, config):
                         trade_date,
                         config['inference']['top_percentage'],
                         config['inference']['max_ensemble_size'],
+                        model_paths_available=model_paths_available,
                         logging=False)
                 ensemble_paths_date_as_key[trade_date] = ensemble_paths
 
@@ -344,7 +357,15 @@ if __name__ == '__main__':
             help='maximum size of ensemble',
             default=-1
         )
-    
+
+    # Specify daily return half-life
+    parser.add_argument(
+            '-drhl', '--daily_return_half_life',
+            type=int,
+            help='daily return half-life in days',
+            default=-1
+        )
+
     # resume from existing log directory
     # If specified, the script will check the existing log directory and resume from the last trade date
     parser.add_argument(

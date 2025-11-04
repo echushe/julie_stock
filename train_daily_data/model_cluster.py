@@ -3,24 +3,28 @@ import torch
 import torch.nn as nn
 import copy
 
+from train_daily_data.global_logger import print_log
 from train_daily_data.preprocess_of_batch import BatchPreprocessor
 from train_daily_data.model_selection import resolve_gpu_plan
 
 
-class ModelEnsemble(nn.Module):
-    def __init__(self, models):
-        
-        super(ModelEnsemble, self).__init__()
+class CLSModelEnsemble(nn.Module):
+    def __init__(self, models, apply_cuda_streams=True):
+
+        super(CLSModelEnsemble, self).__init__()
 
         if isinstance(models, dict):
             # If models is a dictionary, convert it to a list
             models = list(models.values())
-        
+
         self.models = torch.nn.ModuleList(models)
         self.n_ensemble = len(models)
-        
-    def forward(self, x):
-        
+        self.n_streams = self.n_ensemble // 10
+
+        self.apply_cuda_streams = apply_cuda_streams
+
+    def __simple_forward(self, x):
+
         cls_out_list = []
         rate_out_list = []
         for model in self.models:
@@ -32,23 +36,62 @@ class ModelEnsemble(nn.Module):
         cls_out = torch.stack(cls_out_list, dim=0)  # Shape: (n_ensemble, batch_size, output_size)
         rate_out = torch.stack(rate_out_list, dim=0)  # Shape: (n_ensemble, batch_size, 1)
 
+        return cls_out, rate_out  # cls_out: (n_ensemble, batch_size, output_size), rate_out: (n_ensemble, batch_size, 1)   
+
+    def __cuda_stream_forward(self, x):
+
+        stream_list = []  
+        for _ in range(self.n_streams):
+            stream = torch.cuda.Stream(device=next(self.models[0].parameters()).device)
+            stream_list.append(stream)
+
+        cls_out_list = []
+        rate_out_list = []
+        for i, model in enumerate(self.models):
+            if self.n_streams == 0:
+                cls, rate = model(x)
+                cls_out_list.append(cls)
+                rate_out_list.append(rate)
+                continue
+            with torch.cuda.stream(stream_list[i % self.n_streams]):
+                cls, rate = model(x)
+                cls_out_list.append(cls)
+                rate_out_list.append(rate)
+        if self.n_streams > 0:
+            torch.cuda.synchronize(device=next(self.models[0].parameters()).device)
+
+        # Concatenate the outputs from all models
+        cls_out = torch.stack(cls_out_list, dim=0)  # Shape: (n_ensemble, batch_size, output_size)
+        rate_out = torch.stack(rate_out_list, dim=0)  # Shape: (n_ensemble, batch_size, 1)
+
         return cls_out, rate_out  # cls_out: (n_ensemble, batch_size, output_size), rate_out: (n_ensemble, batch_size, 1)
 
+    @torch.no_grad()
+    def forward(self, x):
 
-class ModelEnsembleWithPrice(nn.Module):
-    def __init__(self, models):
-        
-        super(ModelEnsembleWithPrice, self).__init__()
+        if self.apply_cuda_streams:
+            return self.__cuda_stream_forward(x)
+
+        return self.__simple_forward(x)
+
+
+class CLSModelEnsembleWithPrice(nn.Module):
+    def __init__(self, models, apply_cuda_streams=True):
+
+        super(CLSModelEnsembleWithPrice, self).__init__()
 
         if isinstance(models, dict):
             # If models is a dictionary, convert it to a list
             models = list(models.values())
-        
+
         self.models = torch.nn.ModuleList(models)
         self.n_ensemble = len(models)
-        
-    def forward(self, x, last_price):
-        
+        self.n_streams = self.n_ensemble // 10
+
+        self.apply_cuda_streams = apply_cuda_streams
+
+    def __simple_forward(self, x, last_price):
+
         cls_out_list = []
         rate_out_list = []
         for model in self.models:
@@ -61,6 +104,42 @@ class ModelEnsembleWithPrice(nn.Module):
         rate_out = torch.stack(rate_out_list, dim=0)  # Shape: (n_ensemble, batch_size, 1)
 
         return cls_out, rate_out  # cls_out: (n_ensemble, batch_size, output_size), rate_out: (n_ensemble, batch_size, 1)
+        
+    def __cuda_stream_forward(self, x, last_price):
+
+        stream_list = []
+        for _ in range(self.n_streams):
+            stream = torch.cuda.Stream(device=next(self.models[0].parameters()).device)
+            stream_list.append(stream)
+
+        cls_out_list = []
+        rate_out_list = []
+        for i, model in enumerate(self.models):
+            if self.n_streams == 0:
+                cls, rate = model(x, last_price)
+                cls_out_list.append(cls)
+                rate_out_list.append(rate)
+                continue
+            with torch.cuda.stream(stream_list[i % self.n_streams]):
+                cls, rate = model(x, last_price)
+                cls_out_list.append(cls)
+                rate_out_list.append(rate)
+        if self.n_streams > 0:
+            torch.cuda.synchronize(device=next(self.models[0].parameters()).device)
+
+        # Concatenate the outputs from all models
+        cls_out = torch.stack(cls_out_list, dim=0)  # Shape: (n_ensemble, batch_size, output_size)
+        rate_out = torch.stack(rate_out_list, dim=0)  # Shape: (n_ensemble, batch_size, 1)
+
+        return cls_out, rate_out  # cls_out: (n_ensemble, batch_size, output_size), rate_out: (n_ensemble, batch_size, 1)
+
+    @torch.no_grad()
+    def forward(self, x, last_price):
+
+        if self.apply_cuda_streams:
+            return self.__cuda_stream_forward(x, last_price)
+
+        return self.__simple_forward(x, last_price)
 
 
 class ModelCluster:
@@ -73,7 +152,6 @@ class ModelCluster:
         if len(models) == 0:
             raise ValueError('Number of models must be greater than 0.')
 
-        self.models_as_dict = models
         self.differenced = config['preprocessing']['differenced']
 
         gpu_plan = resolve_gpu_plan(n_models=len(models), config=config)
@@ -97,12 +175,16 @@ class ModelCluster:
         
     
     def determine_prediction_via_mean(self, cls_list):
-        if len(cls_list) > 1:
+        if isinstance(cls_list, list):
             for i in range(len(cls_list)):
                 cls_list[i] = cls_list[i].to('cuda:{}'.format(self.gpu_id))
-        # cls_list is a list of tensors, each with shape (batch_size, n_classes)
-        # Stack the tensors so that cls has shape (n_models, batch_size, n_classes)
-        cls = torch.stack(cls_list, dim=0)
+            # cls_list is a list of tensors, each with shape (batch_size, n_classes)
+            # Stack the tensors so that cls has shape (n_models, batch_size, n_classes)
+            cls = torch.stack(cls_list, dim=0)
+        elif isinstance(cls_list, torch.Tensor):
+            # tensor of shape (n_models, batch_size, n_classes)
+            cls = cls_list.to('cuda:{}'.format(self.gpu_id))
+        
         # This is to smooth the cls output
         # Shape will change back to (batch_size, n_classes)
         cls = torch.mean(cls, dim=0)
@@ -112,12 +194,16 @@ class ModelCluster:
 
 
     def determine_prediction_via_mean_fuse_neg_and_pos(self, cls_list):
-        if len(cls_list) > 1:
+        if isinstance(cls_list, list):
             for i in range(len(cls_list)):
                 cls_list[i] = cls_list[i].to('cuda:{}'.format(self.gpu_id))
-        # cls_list is a list of tensors, each with shape (batch_size, n_classes)
-        # Stack the tensors so that cls has shape (n_models, batch_size, n_classes)
-        cls = torch.stack(cls_list, dim=0)
+            # cls_list is a list of tensors, each with shape (batch_size, n_classes)
+            # Stack the tensors so that cls has shape (n_models, batch_size, n_classes)
+            cls = torch.stack(cls_list, dim=0)
+        elif isinstance(cls_list, torch.Tensor):
+            # tensor of shape (n_models, batch_size, n_classes)
+            cls = cls_list.to('cuda:{}'.format(self.gpu_id))
+
         n_classes = cls.shape[2]
         
         # This is to smooth the cls output
@@ -137,12 +223,15 @@ class ModelCluster:
 
 
     def determine_prediction_via_softmax_and_mean(self, cls_list):
-        if len(cls_list) > 1:
+        if isinstance(cls_list, list):
             for i in range(len(cls_list)):
                 cls_list[i] = cls_list[i].to('cuda:{}'.format(self.gpu_id))
-        # cls_list is a list of tensors, each with shape (batch_size, n_classes)
-        # Stack the tensors so that cls has shape (n_models, batch_size, n_classes)
-        cls = torch.stack(cls_list, dim=0)
+            # cls_list is a list of tensors, each with shape (batch_size, n_classes)
+            # Stack the tensors so that cls has shape (n_models, batch_size, n_classes)
+            cls = torch.stack(cls_list, dim=0)
+        elif isinstance(cls_list, torch.Tensor):
+            # tensor of shape (n_models, batch_size, n_classes)
+            cls = cls_list.to('cuda:{}'.format(self.gpu_id))
         
         # Apply softmax to cls along the last dimension (n_classes)
         # Shape will change to (n_models, batch_size, n_classes)
@@ -159,12 +248,16 @@ class ModelCluster:
 
 
     def determine_prediction_via_softmax_and_mean_fuse_neg_and_pos(self, cls_list):
-        if len(cls_list) > 1:
+        if isinstance(cls_list, list):
             for i in range(len(cls_list)):
                 cls_list[i] = cls_list[i].to('cuda:{}'.format(self.gpu_id))
-        # cls_list is a list of tensors, each with shape (batch_size, n_classes)
-        # Stack the tensors so that cls has shape (n_models, batch_size, n_classes)
-        cls = torch.stack(cls_list, dim=0)
+            # cls_list is a list of tensors, each with shape (batch_size, n_classes)
+            # Stack the tensors so that cls has shape (n_models, batch_size, n_classes)
+            cls = torch.stack(cls_list, dim=0)
+        elif isinstance(cls_list, torch.Tensor):
+            # tensor of shape (n_models, batch_size, n_classes)
+            cls = cls_list.to('cuda:{}'.format(self.gpu_id))
+
         n_classes = cls.shape[2]
         
         # Apply softmax to cls along the last dimension (n_classes)
@@ -187,14 +280,17 @@ class ModelCluster:
 
         return pred
 
-    
+
     def determine_prediction_via_voting(self, cls_list):
-        if len(cls_list) > 1:
+        if isinstance(cls_list, list):
             for i in range(len(cls_list)):
                 cls_list[i] = cls_list[i].to('cuda:{}'.format(self.gpu_id))
-        # cls_list is a list of tensors, each with shape (batch_size, n_classes)
-        # Stack the tensors so that cls has shape (n_models, batch_size, n_classes)
-        cls = torch.stack(cls_list, dim=0)
+            # cls_list is a list of tensors, each with shape (batch_size, n_classes)
+            # Stack the tensors so that cls has shape (n_models, batch_size, n_classes)
+            cls = torch.stack(cls_list, dim=0)
+        elif isinstance(cls_list, torch.Tensor):
+            # tensor of shape (n_models, batch_size, n_classes)
+            cls = cls_list.to('cuda:{}'.format(self.gpu_id))
 
         if cls.dim() == 3:
             # Determine classification of each model
@@ -219,12 +315,15 @@ class ModelCluster:
 
 
     def determine_prediction_via_voting_fuse_neg_and_pos(self, cls_list, n_classes=7):
-        if len(cls_list) > 1:
+        if isinstance(cls_list, list):
             for i in range(len(cls_list)):
                 cls_list[i] = cls_list[i].to('cuda:{}'.format(self.gpu_id))
-        # cls_list is a list of tensors, each with shape (batch_size, n_classes)
-        # Stack the tensors so that cls has shape (n_models, batch_size, n_classes)
-        cls = torch.stack(cls_list, dim=0)
+            # cls_list is a list of tensors, each with shape (batch_size, n_classes)
+            # Stack the tensors so that cls has shape (n_models, batch_size, n_classes)
+            cls = torch.stack(cls_list, dim=0)
+        elif isinstance(cls_list, torch.Tensor):
+            # tensor of shape (n_models, batch_size, n_classes)
+            cls = cls_list.to('cuda:{}'.format(self.gpu_id))
         
         if cls.dim() == 3:
             n_classes = cls.shape[2]
@@ -290,18 +389,30 @@ class CLSModelCluster (ModelCluster):
     def __init__(self, models, config):
         super().__init__(models, config)
 
+        model_lists_device_as_key = dict()
+        for key, model in models.items():
+            device = next(model.parameters()).device
+            if device not in model_lists_device_as_key:
+                model_lists_device_as_key[device] = []
+            model_lists_device_as_key[device].append(model)
+
+        self.model_ensembles_device_as_key = dict()
+        for device, model_list in model_lists_device_as_key.items():
+            model_ensemble = CLSModelEnsembleWithPrice(
+                model_list, apply_cuda_streams=config['inference']['apply_cuda_streams']).to(device)
+            self.model_ensembles_device_as_key[device] = model_ensemble
+
 
     def model_forward(self, model, infer_batch_size, inputs, last_price=None):
 
         cls_list = []
         rate_list = []
 
-        if len(self.models_as_dict) > 1:
-            # incase gpu of inputs and last_price is different from the model's gpu
-            device = next(model.parameters()).device
-            inputs = inputs.to(device)
-            if last_price is not None:
-                last_price = last_price.to(device)
+        # incase gpu of inputs and last_price is different from the model's gpu
+        device = next(model.parameters()).device
+        inputs = inputs.to(device)
+        if last_price is not None:
+            last_price = last_price.to(device)
 
         for i in range(0, inputs.shape[0], infer_batch_size):
             inputs_batch = inputs[i : i + infer_batch_size]
@@ -314,8 +425,8 @@ class CLSModelCluster (ModelCluster):
             cls_list.append(cls)
             rate_list.append(rate)
 
-        cls = torch.cat(cls_list, dim=0)
-        rate = torch.cat(rate_list, dim=0)
+        cls = torch.cat(cls_list, dim=1)
+        rate = torch.cat(rate_list, dim=1)
         return cls, rate
 
 
@@ -350,15 +461,15 @@ class CLSModelCluster (ModelCluster):
         inputs = torch.cat((indices_input_batch_n, stock_input_batch_n), dim=2)
 
         cls_list = []
-
-        for time_as_key, model in sorted(self.models_as_dict.items(), key=lambda x: x[0]):
+        for device, model_ensemble in self.model_ensembles_device_as_key.items():
             if self.differenced:
-                #cls, rate = model(inputs, last_price)
-                cls, rate = self.model_forward(model, infer_batch_size, inputs, last_price)
+                cls, rate = self.model_forward(model_ensemble, infer_batch_size, inputs, last_price)
             else:
-                #cls, rate = model(inputs)
-                cls, rate = self.model_forward(model, infer_batch_size, inputs)
+                cls, rate = self.model_forward(model_ensemble, infer_batch_size, inputs)
+
+            cls = cls.to('cuda:{}'.format(self.gpu_id))
             cls_list.append(cls)
+        cls_list = torch.cat(cls_list, dim=0)
 
         if self.voting:
             # Get final prediction via voting along the first dimension (n_models)
@@ -384,6 +495,8 @@ class CLSModelCluster (ModelCluster):
 class REGModelCluster (ModelCluster):
     def __init__(self, models, config):   
         super().__init__(models, config)
+
+        self.models_as_dict = models
 
     def model_forward(self, model, infer_batch_size, inputs, last_price=None):
 

@@ -21,6 +21,30 @@ import time
 import re
 
 
+def process_main_of_models(
+        model_path_idx_log_dirs_list,
+        gpu_id,
+        config,
+        log_name,
+        num_repeats,
+        infer_dataset,
+        model_idx_path_and_scores
+    ):
+
+    for model_path, model_idx, log_dir in model_path_idx_log_dirs_list:
+        inference_main_of_one_model(
+            model_path,
+            model_idx,
+            gpu_id,
+            config,
+            log_name,
+            num_repeats,
+            infer_dataset,
+            model_idx_path_and_scores,
+            dir_to_resume_from=log_dir
+        )
+
+
 def inference_main_of_one_model(
         model_path,
         model_idx,
@@ -35,9 +59,17 @@ def inference_main_of_one_model(
         dir_to_resume_from=None
     ):
 
-    sub_log_name = log_name + f'_model{model_idx:03d}'
+    if dir_to_resume_from is None:
+        sub_log_name = log_name + f'_model{model_idx:04d}'
+    else:
+        log_name_nodes = log_name.split('/')
+        log_name_nodes[-1] = os.path.basename(dir_to_resume_from)
+        sub_log_name = '/'.join(log_name_nodes)
+
     configure_logger(sub_log_name, config, log_to_file=True)
     print_log(f"Running single model from {model_path}", level='INFO')
+    print_log(f'sub_log_name: {sub_log_name}', level='INFO')
+    #print_log(config['logging']['log_dir'], level='INFO')
 
     model = get_models_via_single_model_path(model_path, config, cpu_mode=True)[model_path]
 
@@ -74,6 +106,7 @@ def inference_main_of_one_model(
 
         for log_path in rightful_log_paths:
             resume_logger(log_path, config)
+            print_log(f"Running single model from \n{model_path}", level='INFO')
             print_log('###########################################################################################', level='INFO')
     
             print_log(f"Resuming from log path: {log_path}", level='INFO')
@@ -88,7 +121,7 @@ def inference_main_of_one_model(
     else:
         for i in range(num_repeats):
             configure_logger(sub_log_name, config, log_to_file=True)
-
+            print_log(f"Running single model from \n{model_path}\nrepeat {i+1}/{num_repeats}", level='INFO')
             print_log('###########################################################################################', level='INFO')
 
             try:
@@ -105,7 +138,7 @@ def inference_main_of_one_model(
         print_log(f"No valid total amounts for model {model_path}.", level='ERROR')
         return
 
-    decay_50day = config["ensemble_search"]["daily_return_50day_decay"]
+    daily_return_half_life = config["ensemble_search"]["daily_return_half_life"]
     volatility_rate = config["ensemble_search"]["volatility_rate"]
     drawdown_rate = config["ensemble_search"]["drawdown_rate"]
     min_weekly_win_rate = config["ensemble_search"]["min_weekly_win_rate"]
@@ -115,7 +148,7 @@ def inference_main_of_one_model(
 
     score, _ = evaluate_equity_curve(
         total_amount_record_2d,
-        decay_50day,
+        daily_return_half_life,
         volatility_rate,
         drawdown_rate,
         min_weekly_win_rate,
@@ -156,34 +189,44 @@ def model_subdirs_resume_from(log_dir):
 def stock_exchange_agent_run_model_pool(args, config):
 
     config_file_name = os.path.basename(args.config).replace('.yaml', '')
-
-    now = datetime.datetime.now()
-    now_as_str = now.strftime('%Y-%m-%d_%H-%M-%S')
-    now_as_str_date = now.strftime('%Y-%m-%d')
-
-    log_name = config_file_name + f'_run_model_pool_{now_as_str}/' + now_as_str
-
-    configure_logger(log_name, config, log_to_file=True)
-    print_log(json.dumps(config, indent=4), level='INFO')
-
-    infer_dataset = load_infer_dataset(config, final_test=args.final_test)
     config['my_name'] = config_file_name
 
     if args.gpu_id >= 0:
         config['device']['gpu_id'] = args.gpu_id
 
-    print_log(json.dumps(config, indent=4), level='INFO')
+    now = datetime.datetime.now()
+    now_as_str = now.strftime('%Y-%m-%d_%H-%M-%S')
+    now_as_str_date = now.strftime('%Y-%m-%d')
 
     model_log_dirs_model_path_as_key = dict()
 
     if args.resume_from_log_dir != '':
+        log_parent_dir = os.path.dirname(args.resume_from_log_dir)
+        config['logging']['log_dir'] = log_parent_dir
+        log_name = os.path.join(os.path.basename(args.resume_from_log_dir), now_as_str)
+        configure_logger(log_name, config, log_to_file=True)
+
         print_log(f"Resuming from log directory: {args.resume_from_log_dir}", level='INFO')
         model_log_dirs_model_path_as_key = model_subdirs_resume_from(args.resume_from_log_dir)
-        if len(model_log_dirs_model_path_as_key) == 0:
-            raise ValueError(f"No valid model log directories found in {args.resume_from_log_dir}.")
         print_log(f"Found {len(model_log_dirs_model_path_as_key)} models to resume from.", level='INFO')
 
+        # In case there are new checkpoints added to the checkpoint dirs
+        checkpoint_dirs = config['model_pool']['checkpoint_dirs']
+        print_log(f"Also loading models from checkpoint directories: {checkpoint_dirs}", level='INFO')
+        model_paths = get_all_model_paths_via_checkpoint_dirs(checkpoint_dirs, config)
+        print_log(f"Found {len(model_paths)} models in checkpoint directories.", level='INFO')
+
+        for model_path in model_paths:
+            if model_path not in model_log_dirs_model_path_as_key:
+                model_log_dirs_model_path_as_key[model_path] = None  # No log dir since not resuming
+
+        if len(model_log_dirs_model_path_as_key) == 0:
+            raise ValueError(f"No valid model log directories found in {args.resume_from_log_dir}.")
+
     else:
+        log_name = config_file_name + f'_run_model_pool_{now_as_str}/' + now_as_str
+        configure_logger(log_name, config, log_to_file=True)
+
         checkpoint_dirs = config['model_pool']['checkpoint_dirs']
 
         # Get all model paths from the checkpoint directories
@@ -192,41 +235,63 @@ def stock_exchange_agent_run_model_pool(args, config):
         for model_path in model_paths:
             model_log_dirs_model_path_as_key[model_path] = None  # No log dir since not resuming
 
-    pairs_of_model_path_and_log_dir = sorted(list(model_log_dirs_model_path_as_key.items()), key=lambda x: x[0])
+    #pairs_of_model_path_and_log_dir = sorted(list(model_log_dirs_model_path_as_key.items()), key=lambda x: x[0])
+    pairs_of_model_path_and_log_dir = list(model_log_dirs_model_path_as_key.items())
+    # Shuffle the order of models
+    random.shuffle(pairs_of_model_path_and_log_dir)
 
-    max_number_of_processes = config['model_pool']['max_number_of_processes']
-
-    multiprocessing.set_start_method('spawn')
-    model_idx_path_and_scores = multiprocessing.Manager().list()
-
-    pool_results = []
-    pool = None
-
-    # Go through each model and run inference in parallel
-    for model_idx in range(len(pairs_of_model_path_and_log_dir)):
-
-        path, model_log_dir = pairs_of_model_path_and_log_dir[model_idx]
-
+    # find existing model numbers via log dirs
+    existing_model_numbers = set()
+    for _, model_log_dir in pairs_of_model_path_and_log_dir:
         if model_log_dir is not None:
             log_dir_base_name = os.path.basename(model_log_dir)
             model_idx_in_log_dir = int(re.search(r'model([0-9]+)', log_dir_base_name).group(1))
-            if model_idx_in_log_dir != model_idx:
-                raise ValueError(f"Model index mismatch: {model_idx_in_log_dir} != {model_idx}")
+            existing_model_numbers.add(model_idx_in_log_dir)
 
-        if len(pool_results) % max_number_of_processes == 0:
-            
-            if len(pool_results) > 0:
-                # Wait for any process to finish
-                pool.close()
-                pool.join()
-                pool_results.clear()
 
-            # Each round only execute up to max_number_of_processes
-            n_processes = min(max_number_of_processes, len(pairs_of_model_path_and_log_dir) - model_idx)
-            pool = multiprocessing.Pool(n_processes)
+    # prepare list of (model_path, model_idx, model_log_dir)
+    # model_idx is either extracted from log dir or assigned new
+    model_path_idx_log_dirs_list = []
+    new_model_idx = 0
+    for idx, (model_path, model_log_dir) in enumerate(pairs_of_model_path_and_log_dir):
+        if model_log_dir is not None:
+            log_dir_base_name = os.path.basename(model_log_dir)
+            model_idx = int(re.search(r'model([0-9]+)', log_dir_base_name).group(1))
+        else:
+            while new_model_idx in existing_model_numbers:
+                new_model_idx += 1
+            model_idx = new_model_idx
+            new_model_idx += 1
 
-            gpu_plan_queue = resolve_gpu_plan(n_models=n_processes, config=config)
-            gpu_plan_queue_head = gpu_plan_queue.pop(0)
+        model_path_idx_log_dirs_list.append((model_path, model_idx, model_log_dir))
+
+
+    print_log(json.dumps(config, indent=4), level='INFO')
+    # Load inference dataset
+    infer_dataset = load_infer_dataset(config, final_test=args.final_test)
+
+    max_number_of_processes = config['model_pool']['max_number_of_processes']
+    multiprocessing.set_start_method('spawn')
+    model_idx_path_and_scores = multiprocessing.Manager().list()
+
+    
+    # Assign models to processes, each process handles a sublist of models
+    num_models_each_process_should_run = \
+        len(model_path_idx_log_dirs_list) // max_number_of_processes + 1 \
+            if len(model_path_idx_log_dirs_list) % max_number_of_processes != 0 else \
+                len(model_path_idx_log_dirs_list) // max_number_of_processes
+    model_path_idx_log_dirs_sublists = []
+    for i in range(0, len(model_path_idx_log_dirs_list), num_models_each_process_should_run):
+        sublist = model_path_idx_log_dirs_list[i:i + num_models_each_process_should_run]
+        model_path_idx_log_dirs_sublists.append(sublist)
+
+    processes = []
+
+    # resolve gpu plan
+    gpu_plan_queue = resolve_gpu_plan(n_models=len(model_path_idx_log_dirs_sublists), config=config)
+    gpu_plan_queue_head = gpu_plan_queue.pop(0)
+
+    for sublist in model_path_idx_log_dirs_sublists:
 
         while gpu_plan_queue_head[1] == 0:
             # If the head GPU has no more models to load, pop the next one
@@ -236,31 +301,27 @@ def stock_exchange_agent_run_model_pool(args, config):
 
         # Decrease the number of models for this GPU
         gpu_id = gpu_plan_queue_head[0]
-        gpu_plan_queue_head = (gpu_plan_queue_head[0], gpu_plan_queue_head[1] - 1)
+        gpu_plan_queue_head = (gpu_id, gpu_plan_queue_head[1] - 1)
 
-        pool_result = pool.apply_async(inference_main_of_one_model,
-                        args=(
-                            path,
-                            model_idx,
-                            gpu_id,
-                            config,
-                            log_name,
-                            args.num_repeats,
-                            infer_dataset,
-                            model_idx_path_and_scores,
-                            model_log_dir
-                        ))
-        pool_results.append(pool_result)
+        p = multiprocessing.Process(
+            target=process_main_of_models,
+            args=(
+                sublist,
+                gpu_id,
+                config,
+                log_name,
+                args.num_repeats,
+                infer_dataset,
+                model_idx_path_and_scores
+            ))
+        processes.append(p)
+        p.start()
 
-        print_log(f"Starting process for model {model_idx:03} {path}...", level='INFO')
+        print_log(f"Starting process for {len(sublist)} models...", level='INFO')
 
-        model_idx += 1
-    
-    if len(pool_results) > 0:
-        # Wait for any process to finish
-        pool.close()
-        pool.join()
-        pool_results.clear()
+    # Wait for all processes to finish
+    for p in processes:
+        p.join()
 
     configure_logger(log_name, config, log_to_file=True)
 

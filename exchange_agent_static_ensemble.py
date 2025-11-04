@@ -1,5 +1,5 @@
 from exchange_agent import StockExchangeAgent
-from train_daily_data.model_selection import get_models_via_checkpoint_dirs, get_models_via_single_model_path, get_models_via_paths
+from train_daily_data.model_selection import get_models_via_paths, get_all_model_paths_via_checkpoint_dirs
 from train_daily_data.model_cluster import ModelCluster, REGModelCluster, CLSModelCluster
 from exchange_agent_ensemble_search import search_ensemble_by_logs
 from exchange_agent_lb import *
@@ -44,8 +44,15 @@ def ensemble_static_simulation(args, config):
         config["inference"]["top_percentage"] = args.top_percentage
     if args.max_ensemble_size > 0:
         config["inference"]["max_ensemble_size"] = args.max_ensemble_size
+    if args.daily_return_half_life > 0:
+        config["ensemble_search"]["daily_return_half_life"] = args.daily_return_half_life
 
     print_log(json.dumps(config, indent=4), level='INFO')
+
+    # Get all model paths from the checkpoint directories via preconfigured requirements (min bonus, etc.)
+    checkpoint_dirs = config['model_pool']['checkpoint_dirs']
+    model_paths_available = get_all_model_paths_via_checkpoint_dirs(checkpoint_dirs, config)
+
     last_history_date = config["inference"]["last_history_date"]
 
     if args.dummy:
@@ -62,6 +69,7 @@ def ensemble_static_simulation(args, config):
                 config["inference"]["last_history_date"],
                 config['inference']['top_percentage'],
                 config['inference']['max_ensemble_size'],
+                model_paths_available=model_paths_available,
                 logging=False)
         
         # The trade date starts with should be the last history date
@@ -231,6 +239,14 @@ if __name__ == '__main__':
             '-me', '--max_ensemble_size',
             type=int,
             help='maximum size of ensemble',
+            default=-1
+        )
+
+    # Specify daily return half-life
+    parser.add_argument(
+            '-drhl', '--daily_return_half_life',
+            type=int,
+            help='daily return half-life in days',
             default=-1
         )
 

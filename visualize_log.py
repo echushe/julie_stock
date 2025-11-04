@@ -283,12 +283,7 @@ def plot_data(data_group : list, logarithm):
     plt.show()
 
 
-def main():
-    args = parse_args()
-    single_log_path = args.log_path
-    log_dir = args.log_dir
-    logarithm = args.logarithm
-    mean = args.mean
+def main(single_log_path, log_dir, logarithm, mean):
 
     single_log_path_list = single_log_path.split(',')
     log_dir_list = log_dir.split(',')
@@ -310,4 +305,11 @@ def main():
     plot_data(data_group, logarithm)
 
 if __name__ == "__main__":
-    main()
+
+    args = parse_args()
+    single_log_path = args.log_path
+    log_dir = args.log_dir
+    logarithm = args.logarithm
+    mean = args.mean
+
+    main(single_log_path, log_dir, logarithm, mean)

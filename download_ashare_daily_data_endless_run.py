@@ -20,6 +20,7 @@ args = parser.parse_args()
 
 downloaded_mark_1 = False
 downloaded_mark_2 = False
+downloaded_mark_3 = False
 date_of_last_download = '0000-00-00'
 
 while True:
@@ -33,9 +34,11 @@ while True:
     if current_date_as_str != date_of_last_download:
         downloaded_mark_1 = False
         downloaded_mark_2 = False
+        downloaded_mark_3 = False
 
     if (current_time.hour == 16 and not downloaded_mark_1) or \
-       (current_time.hour == 22 and not downloaded_mark_2):
+       (current_time.hour == 20 and not downloaded_mark_2) or \
+       (current_time.hour == 22 and not downloaded_mark_3):
 
         time.sleep(random.randint(0, 60))
 
@@ -55,9 +58,11 @@ while True:
 
         if current_time.hour == 16:
             downloaded_mark_1 = True
-        elif current_time.hour == 22:
+        elif current_time.hour == 20:
             downloaded_mark_2 = True
-    
+        elif current_time.hour == 22:
+            downloaded_mark_3 = True
+
         date_of_last_download = current_date_as_str
 
 

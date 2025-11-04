@@ -33,15 +33,15 @@ def post_process(equity_curve_2d, num_trade_days_to_truncate=0):
     return equity_curve
 
 
-def evaluate(equity_of_log_format, decay_50day):
+def evaluate(equity_of_log_format, daily_return_half_life):
     """
     equity_curve: list or array of portfolio values (daily total property).
     """
     returns = np.diff(equity_of_log_format)
 
     # Basic metrics
-    # How much weight decreases in each 50 days
-    decay_of_each_day = decay_50day ** (1/50)
+    # Calculate decay of each day via how many days for the half decay of daily return
+    decay_of_each_day = 0.5 ** (1 / daily_return_half_life)
     weights = decay_of_each_day ** np.arange(len(returns)-1, -1, -1)
     # normalize weights
     weights /= np.sum(weights)
@@ -148,7 +148,7 @@ def marking_metric(
 
 def evaluate_equity_curve(
         equity_curve,
-        decay_50day,
+        daily_return_half_life,
         volatility_rate,
         drawdown_rate,
         min_weekly_win_rate,
@@ -161,7 +161,7 @@ def evaluate_equity_curve(
     # Preprocess the equity curve into log format
     processed_equity = post_process(equity_curve, num_trade_days_to_truncate)
     # Evaluate the processed equity curve
-    evaluation_results = evaluate(processed_equity, decay_50day)
+    evaluation_results = evaluate(processed_equity, daily_return_half_life)
     # Compute the marking score
     marking_score = marking_metric(
         evaluation_results,
@@ -180,6 +180,10 @@ def most_distinct_candidates(equity_of_log_format_2d, num_to_select):
     """
     Find the most distinct candidates from a 2D array of equity curves.
     """
+    # if there is only one candidate, return it directly
+    if len(equity_of_log_format_2d) == 1:
+        return [0]
+
     # Make sure the input data is a pure numpy array
     equity_of_log_format_2d = np.array(equity_of_log_format_2d, dtype=float)
 

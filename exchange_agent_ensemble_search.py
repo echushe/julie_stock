@@ -1,6 +1,7 @@
 
 from exchange_agent_lb import *
 from train_daily_data.global_logger import configure_logger, print_log
+from train_daily_data.model_selection import get_all_model_paths_via_checkpoint_dirs
 from exchange_agent_evaluate import evaluate_equity_curve, select_distinct_candidates
 from visualize_log import primary_process
 
@@ -22,14 +23,25 @@ class LogDataCache:
     data_group = None
 
 
-def load_data_from_model_pool_logs(model_pool_log_dir, logging=True):
+def load_data_from_model_pool_logs(model_pool_log_dir, model_paths_available, logging=True):
 
     # get all sub dirs ending with regular expression model[0-9]+ under model_pool_log_dir
     sub_log_dirs = []
     for root, dirs, files in os.walk(model_pool_log_dir):
         for dir_name in dirs:
             if re.match(r'[0-9\-]+_[0-9\-]+_model[0-9]+', dir_name):
-                sub_log_dirs.append(os.path.join(root, dir_name))
+
+                log_files = [f for f in os.listdir(os.path.join(root, dir_name)) if f.endswith('.log')]
+                log_files = sorted(log_files)
+                if len(log_files) > 1:
+                    # get model path from the first log file
+                    first_log_file_path = os.path.join(root, dir_name, log_files[0])
+                    with open(first_log_file_path, 'r') as f:
+                        lines = f.readlines()
+                        model_path = lines[0].strip().split(' ')[-1]
+                        if model_paths_available is None or \
+                            (model_paths_available is not None and model_path in model_paths_available):
+                            sub_log_dirs.append(os.path.join(root, dir_name))
 
     data_group = []
     for sub_log_dir in sub_log_dirs:
@@ -41,13 +53,13 @@ def load_data_from_model_pool_logs(model_pool_log_dir, logging=True):
     return data_group
 
 
-def search_ensemble_by_logs(model_pool_log_dir, config, last_history_date, top_percentage, num_to_select, logging=True):
+def search_ensemble_by_logs(model_pool_log_dir, config, last_history_date, top_percentage, num_to_select, model_paths_available=None, logging=True):
 
-    print_log(f"Searching for golden model in logs directory: {model_pool_log_dir}", level='INFO')
+    print_log(f"Searching for model ensemble in logs directory: {model_pool_log_dir}", level='INFO')
     print_log(f"Last history date for test: {last_history_date}", level='INFO')
 
     if LogDataCache.data_group is None or LogDataCache.model_pool_log_dir != model_pool_log_dir:
-        data_group = load_data_from_model_pool_logs(model_pool_log_dir, logging=logging)
+        data_group = load_data_from_model_pool_logs(model_pool_log_dir, model_paths_available, logging=logging)
         LogDataCache.data_group = data_group
         LogDataCache.model_pool_log_dir = model_pool_log_dir
     else:
@@ -57,7 +69,7 @@ def search_ensemble_by_logs(model_pool_log_dir, config, last_history_date, top_p
 
     print_log(f"Number of log directories (candidate models) processed: {len(data_group)}", level='INFO')
 
-    decay_50day = config["ensemble_search"]["daily_return_50day_decay"]
+    daily_return_half_life = config["ensemble_search"]["daily_return_half_life"]
     volatility_rate = config["ensemble_search"]["volatility_rate"]
     drawdown_rate = config["ensemble_search"]["drawdown_rate"]
     min_weekly_win_rate = config["ensemble_search"]["min_weekly_win_rate"]
@@ -105,7 +117,7 @@ def search_ensemble_by_logs(model_pool_log_dir, config, last_history_date, top_p
         #print_log(f'shape of total_amount_list_2d: {total_amount_list_2d.shape}', level='INFO')
         score, results = evaluate_equity_curve(
             total_amount_list_2d,
-            decay_50day,
+            daily_return_half_life,
             volatility_rate,
             drawdown_rate,
             min_weekly_win_rate,
@@ -261,12 +273,17 @@ if __name__ == '__main__':
 
     # If searching by logs, we can use the existing logs to find the best model
     print_log("Searching for the best model by existing logs...", level='INFO')
+    # Get all model paths from the checkpoint directories via preconfigured requirements (min bonus, etc.)
+    checkpoint_dirs = config['model_pool']['checkpoint_dirs']
+    model_paths_available = get_all_model_paths_via_checkpoint_dirs(checkpoint_dirs, config)
+
     last_future_date, ensemble_paths = \
         search_ensemble_by_logs(
             model_pool_log_dir = args.model_pool_log_dir,
             config = config,
             last_history_date = config["inference"]["last_history_date"],
             top_percentage = config["inference"]["top_percentage"],
-            num_to_select= config["inference"]["max_ensemble_size"])
+            num_to_select= config["inference"]["max_ensemble_size"],
+            model_paths_available = model_paths_available)
 
     print_log(f"Last history date: {config['inference']['last_history_date']}, Last future date: {last_future_date}", level='INFO')
